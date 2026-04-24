@@ -1,0 +1,4 @@
+# file: C:\Users\shubh\Enterprise_Knowledge_Assistant\src\enterprise_rag\conversation_manager.py
+# hypothesis_version: 6.151.10
+
+['answer', 'original_query', 'rewritten_query', 'role', 'session:{session_id}', 'timestamp']

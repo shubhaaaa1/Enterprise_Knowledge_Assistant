@@ -1,0 +1,4 @@
+# file: C:\Users\shubh\Enterprise_Knowledge_Assistant\src\enterprise_rag\citation_engine.py
+# hypothesis_version: 6.151.10
+
+[0.7, 1.0, 300, ' … ', '(?<=[.!?])\\s+|\\n', 'RELATED_TO', '\\[(\\d+)\\]', 'graph']

@@ -1,0 +1,4 @@
+# file: C:\Users\shubh\Enterprise_Knowledge_Assistant\src\enterprise_rag\logging.py
+# hypothesis_version: 6.151.10
+
+['%(message)s', 'access_control', 'chunks_excluded', 'chunks_retrieved', 'component_name', 'correlation_id', 'elasticsearch', 'enterprise_rag.log', 'error', 'error_message', 'event', 'file', 'grounding_score', 'latency_ms', 'logs', 'original_query', 'query', 'retention_days', 'rewritten_query', 'roles_evaluated', 's3', 'session_id', 'severity', 'sources_filtered', 'timestamp', 'user_id']
