@@ -1,644 +1,696 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Enterprise RAG</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enterprise RAG</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; font-size: 14px; }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0f1117;
-      color: #e2e8f0;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
+  /* HEADER */
+  #header { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 0 16px; height: 52px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  #header h1 { font-size: 18px; font-weight: 700; color: #a78bfa; flex: 1; }
+  #health-badge { cursor: pointer; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid #2d3148; background: #12151f; transition: all 0.2s; user-select: none; }
+  #health-badge.ok { color: #4ade80; border-color: #4ade80; }
+  #health-badge.degraded { color: #facc15; border-color: #facc15; }
+  #health-badge.down { color: #f87171; border-color: #f87171; }
+  #health-badge.checking { color: #64748b; border-color: #64748b; }
+  #clear-btn { background: transparent; border: 1px solid #2d3148; color: #94a3b8; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+  #clear-btn:hover { border-color: #f87171; color: #f87171; }
 
-    /* ── Header ── */
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 24px;
-      background: #1a1d27;
-      border-bottom: 1px solid #2d3148;
-      flex-shrink: 0;
-    }
-    header h1 { font-size: 1.1rem; font-weight: 600; color: #a78bfa; letter-spacing: 0.02em; }
-    header .subtitle { font-size: 0.75rem; color: #64748b; margin-top: 2px; }
+  /* TOKEN BAR */
+  #token-bar { background: #12151f; border-bottom: 1px solid #2d3148; padding: 6px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  #token-bar label { font-size: 12px; color: #64748b; white-space: nowrap; }
+  #token-input { flex: 1; max-width: 340px; background: #1a1d27; border: 1px solid #2d3148; color: #e2e8f0; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-family: monospace; }
+  #token-input:focus { outline: none; border-color: #4f46e5; }
+  #session-display { font-size: 11px; color: #64748b; font-family: monospace; margin-left: auto; }
 
-    .header-right { display: flex; align-items: center; gap: 12px; }
+  /* BODY LAYOUT */
+  #body { display: flex; flex: 1; overflow: hidden; }
 
-    #health-badge {
-      font-size: 0.72rem;
-      padding: 3px 10px;
-      border-radius: 999px;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      transition: opacity 0.2s;
-    }
-    #health-badge:hover { opacity: 0.8; }
-    #health-badge.ok   { background: #14532d; color: #4ade80; }
-    #health-badge.degraded { background: #713f12; color: #fbbf24; }
-    #health-badge.down { background: #450a0a; color: #f87171; }
-    #health-badge.unknown { background: #1e293b; color: #94a3b8; }
+  /* SIDEBAR */
+  #sidebar { width: 280px; background: #12151f; border-right: 1px solid #2d3148; display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+  .sidebar-section { padding: 14px; border-bottom: 1px solid #2d3148; }
+  .sidebar-section h3 { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
 
-    #clear-btn {
-      font-size: 0.75rem;
-      padding: 4px 12px;
-      border-radius: 6px;
-      background: #1e293b;
-      color: #94a3b8;
-      border: 1px solid #334155;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    #clear-btn:hover { background: #334155; color: #e2e8f0; }
+  /* UPLOAD */
+  #drop-zone { border: 2px dashed #2d3148; border-radius: 8px; padding: 20px 12px; text-align: center; cursor: pointer; transition: all 0.2s; color: #64748b; font-size: 12px; line-height: 1.6; }
+  #drop-zone:hover, #drop-zone.drag-over { border-color: #4f46e5; color: #a78bfa; background: rgba(79,70,229,0.05); }
+  #drop-zone input[type=file] { display: none; }
+  #drop-zone .drop-icon { font-size: 24px; display: block; margin-bottom: 6px; }
+  #upload-status { margin-top: 8px; font-size: 12px; min-height: 18px; }
+  #upload-status.uploading { color: #94a3b8; }
+  #upload-status.success { color: #4ade80; }
+  #upload-status.error { color: #f87171; }
+  .perm-tags-row { margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+  .perm-tags-row label { font-size: 11px; color: #64748b; white-space: nowrap; }
+  .perm-tags-row input { flex: 1; background: #1a1d27; border: 1px solid #2d3148; color: #e2e8f0; padding: 4px 8px; border-radius: 5px; font-size: 11px; }
+  .perm-tags-row input:focus { outline: none; border-color: #4f46e5; }
 
-    /* ── Main layout ── */
-    main {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-    }
+  /* CONNECT SOURCE */
+  .source-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+  .source-tab { flex: 1; padding: 5px; border: 1px solid #2d3148; border-radius: 5px; background: transparent; color: #64748b; font-size: 12px; cursor: pointer; text-align: center; transition: all 0.2s; }
+  .source-tab.active { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+  .source-form { display: none; flex-direction: column; gap: 7px; }
+  .source-form.active { display: flex; }
+  .source-form input { background: #1a1d27; border: 1px solid #2d3148; color: #e2e8f0; padding: 6px 10px; border-radius: 6px; font-size: 12px; }
+  .source-form input:focus { outline: none; border-color: #4f46e5; }
+  .source-form input::placeholder { color: #475569; }
+  .source-form button { background: #4f46e5; border: none; color: #fff; padding: 7px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: background 0.2s; }
+  .source-form button:hover { background: #4338ca; }
+  .source-form button:disabled { background: #2d3148; color: #64748b; cursor: not-allowed; }
+  #connect-status { margin-top: 6px; font-size: 12px; min-height: 16px; }
+  #connect-status.connecting { color: #94a3b8; }
+  #connect-status.success { color: #4ade80; }
+  #connect-status.error { color: #f87171; }
+  #connect-status.info { color: #a78bfa; }
 
-    /* ── Chat panel ── */
-    #chat-panel {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
+  /* MAIN CHAT */
+  #chat-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #messages { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+  #messages::-webkit-scrollbar { width: 6px; }
+  #messages::-webkit-scrollbar-track { background: transparent; }
+  #messages::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 3px; }
 
-    #messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
+  /* BUBBLES */
+  .msg-row { display: flex; gap: 10px; max-width: 820px; }
+  .msg-row.user { align-self: flex-end; flex-direction: row-reverse; }
+  .msg-row.assistant { align-self: flex-start; }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; margin-top: 2px; }
+  .user .avatar { background: #1e40af; }
+  .assistant .avatar { background: #312e81; }
+  .bubble { padding: 12px 16px; border-radius: 12px; line-height: 1.6; max-width: 680px; }
+  .user .bubble { background: #1e40af; color: #e2e8f0; border-bottom-right-radius: 3px; }
+  .assistant .bubble { background: #1e293b; color: #e2e8f0; border-bottom-left-radius: 3px; border: 1px solid #2d3148; }
 
-    .msg { display: flex; gap: 12px; max-width: 820px; }
-    .msg.user { align-self: flex-end; flex-direction: row-reverse; }
-    .msg.assistant { align-self: flex-start; }
+  /* CITATIONS */
+  .answer-text { white-space: pre-wrap; word-break: break-word; }
+  .cite-ref { color: #a78bfa; font-size: 11px; font-weight: 700; cursor: default; background: rgba(167,139,250,0.15); padding: 1px 4px; border-radius: 3px; }
+  .citations { margin-top: 12px; border-top: 1px solid #2d3148; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .citation-item { background: #0f1117; border: 1px solid #2d3148; border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+  .citation-item .cite-num { color: #a78bfa; font-weight: 700; margin-right: 4px; }
+  .citation-item .cite-title { color: #e2e8f0; font-weight: 600; }
+  .citation-item .cite-url { color: #4f46e5; text-decoration: none; font-size: 11px; display: block; margin-top: 2px; word-break: break-all; }
+  .citation-item .cite-url:hover { text-decoration: underline; }
+  .citation-item .cite-excerpt { color: #94a3b8; margin-top: 4px; font-style: italic; line-height: 1.4; }
 
-    .avatar {
-      width: 32px; height: 32px;
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.8rem; font-weight: 700;
-      flex-shrink: 0;
-    }
-    .msg.user .avatar    { background: #4f46e5; color: #fff; }
-    .msg.assistant .avatar { background: #7c3aed; color: #fff; }
+  /* GROUNDING SCORE */
+  .grounding-bar { margin-top: 10px; }
+  .grounding-label { font-size: 11px; color: #64748b; margin-bottom: 4px; display: flex; justify-content: space-between; }
+  .grounding-track { height: 4px; background: #2d3148; border-radius: 2px; overflow: hidden; }
+  .grounding-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
 
-    .bubble {
-      padding: 12px 16px;
-      border-radius: 12px;
-      font-size: 0.9rem;
-      line-height: 1.6;
-      max-width: 680px;
-    }
-    .msg.user .bubble {
-      background: #1e40af;
-      color: #e0e7ff;
-      border-bottom-right-radius: 4px;
-    }
-    .msg.assistant .bubble {
-      background: #1e293b;
-      color: #e2e8f0;
-      border-bottom-left-radius: 4px;
-    }
+  /* LOW CONFIDENCE WARNING */
+  .low-conf-warning { margin-top: 8px; padding: 6px 10px; background: rgba(250,204,21,0.1); border: 1px solid rgba(250,204,21,0.3); border-radius: 6px; font-size: 12px; color: #facc15; }
 
-    .bubble .warning {
-      margin-top: 8px;
-      padding: 6px 10px;
-      background: #451a03;
-      border-left: 3px solid #f97316;
-      border-radius: 4px;
-      font-size: 0.78rem;
-      color: #fdba74;
-    }
+  /* TYPING INDICATOR */
+  #typing-indicator { display: none; align-self: flex-start; }
+  #typing-indicator.visible { display: flex; }
+  .typing-bubble { background: #1e293b; border: 1px solid #2d3148; border-radius: 12px; border-bottom-left-radius: 3px; padding: 12px 16px; display: flex; gap: 5px; align-items: center; }
+  .dot { width: 7px; height: 7px; background: #64748b; border-radius: 50%; animation: bounce 1.2s infinite; }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
 
-    .bubble .graph-notice {
-      margin-top: 8px;
-      padding: 6px 10px;
-      background: #1e1b4b;
-      border-left: 3px solid #818cf8;
-      border-radius: 4px;
-      font-size: 0.78rem;
-      color: #a5b4fc;
-    }
+  /* INPUT BAR */
+  #input-bar { background: #1a1d27; border-top: 1px solid #2d3148; padding: 12px 16px; display: flex; gap: 10px; align-items: flex-end; flex-shrink: 0; }
+  #query-input { flex: 1; background: #0f1117; border: 1px solid #2d3148; color: #e2e8f0; padding: 10px 14px; border-radius: 8px; font-size: 14px; font-family: inherit; resize: none; min-height: 44px; max-height: 140px; line-height: 1.5; transition: border-color 0.2s; }
+  #query-input:focus { outline: none; border-color: #4f46e5; }
+  #query-input::placeholder { color: #475569; }
+  #send-btn { background: #4f46e5; border: none; color: #fff; width: 44px; height: 44px; border-radius: 8px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; transition: background 0.2s; flex-shrink: 0; }
+  #send-btn:hover { background: #4338ca; }
+  #send-btn:disabled { background: #2d3148; color: #64748b; cursor: not-allowed; }
 
-    /* Citations */
-    .citations {
-      margin-top: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .citation {
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 8px;
-      padding: 8px 12px;
-      font-size: 0.78rem;
-    }
-    .citation .cite-header {
-      display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
-    }
-    .cite-num {
-      background: #4f46e5;
-      color: #fff;
-      border-radius: 4px;
-      padding: 1px 6px;
-      font-size: 0.7rem;
-      font-weight: 700;
-    }
-    .cite-title { color: #a78bfa; font-weight: 600; }
-    .cite-type  { color: #475569; font-size: 0.7rem; }
-    .cite-url   { color: #38bdf8; font-size: 0.72rem; word-break: break-all; }
-    .cite-url a { color: inherit; text-decoration: none; }
-    .cite-url a:hover { text-decoration: underline; }
-    .cite-excerpt { color: #94a3b8; margin-top: 4px; font-style: italic; }
+  /* HEALTH MODAL */
+  #modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+  #modal-overlay.visible { display: flex; }
+  #health-modal { background: #1a1d27; border: 1px solid #2d3148; border-radius: 12px; padding: 20px; min-width: 320px; max-width: 480px; width: 90%; }
+  #health-modal h2 { font-size: 16px; font-weight: 700; color: #e2e8f0; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+  #modal-close { background: transparent; border: none; color: #64748b; font-size: 20px; cursor: pointer; line-height: 1; }
+  #modal-close:hover { color: #e2e8f0; }
+  .component-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #2d3148; }
+  .component-row:last-child { border-bottom: none; }
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .status-dot.ok { background: #4ade80; }
+  .status-dot.degraded { background: #facc15; }
+  .status-dot.down, .status-dot.error { background: #f87171; }
+  .status-dot.unknown { background: #64748b; }
+  .component-name { flex: 1; font-size: 13px; color: #e2e8f0; }
+  .component-status { font-size: 12px; color: #64748b; }
 
-    .grounding {
-      margin-top: 10px;
-      font-size: 0.75rem;
-      color: #64748b;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .grounding-bar {
-      flex: 1; height: 4px; background: #1e293b; border-radius: 2px; overflow: hidden;
-    }
-    .grounding-fill { height: 100%; border-radius: 2px; transition: width 0.4s; }
-
-    /* Typing indicator */
-    .typing { display: flex; align-items: center; gap: 4px; padding: 4px 0; }
-    .typing span {
-      width: 7px; height: 7px; background: #4f46e5; border-radius: 50%;
-      animation: bounce 1.2s infinite;
-    }
-    .typing span:nth-child(2) { animation-delay: 0.2s; }
-    .typing span:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes bounce {
-      0%, 80%, 100% { transform: translateY(0); }
-      40% { transform: translateY(-6px); }
-    }
-
-    /* ── Input bar ── */
-    #input-bar {
-      padding: 16px 24px;
-      background: #1a1d27;
-      border-top: 1px solid #2d3148;
-      display: flex;
-      gap: 10px;
-      align-items: flex-end;
-      flex-shrink: 0;
-    }
-
-    #query-input {
-      flex: 1;
-      background: #0f1117;
-      border: 1px solid #334155;
-      border-radius: 10px;
-      color: #e2e8f0;
-      font-size: 0.9rem;
-      padding: 10px 14px;
-      resize: none;
-      min-height: 44px;
-      max-height: 140px;
-      outline: none;
-      transition: border-color 0.2s;
-      font-family: inherit;
-    }
-    #query-input:focus { border-color: #4f46e5; }
-    #query-input::placeholder { color: #475569; }
-
-    #send-btn {
-      background: #4f46e5;
-      color: #fff;
-      border: none;
-      border-radius: 10px;
-      padding: 10px 18px;
-      font-size: 0.9rem;
-      cursor: pointer;
-      transition: background 0.2s;
-      height: 44px;
-      flex-shrink: 0;
-    }
-    #send-btn:hover:not(:disabled) { background: #4338ca; }
-    #send-btn:disabled { background: #1e293b; color: #475569; cursor: not-allowed; }
-
-    /* ── Health modal ── */
-    #health-modal {
-      display: none;
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.6);
-      z-index: 100;
-      align-items: center;
-      justify-content: center;
-    }
-    #health-modal.open { display: flex; }
-    .modal-box {
-      background: #1a1d27;
-      border: 1px solid #2d3148;
-      border-radius: 12px;
-      padding: 24px;
-      min-width: 340px;
-      max-width: 480px;
-      width: 90%;
-    }
-    .modal-box h2 { font-size: 1rem; margin-bottom: 16px; color: #a78bfa; }
-    .component-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 0;
-      border-bottom: 1px solid #1e293b;
-      font-size: 0.85rem;
-    }
-    .component-row:last-child { border-bottom: none; }
-    .status-dot {
-      width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; display: inline-block;
-    }
-    .status-dot.ok      { background: #4ade80; }
-    .status-dot.degraded { background: #fbbf24; }
-    .status-dot.down    { background: #f87171; }
-    .modal-close {
-      margin-top: 16px;
-      width: 100%;
-      padding: 8px;
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      color: #94a3b8;
-      cursor: pointer;
-      font-size: 0.85rem;
-    }
-    .modal-close:hover { background: #334155; }
-
-    /* ── Token config ── */
-    #token-bar {
-      padding: 8px 24px;
-      background: #12151f;
-      border-bottom: 1px solid #1e293b;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 0.78rem;
-      color: #64748b;
-      flex-shrink: 0;
-    }
-    #token-input {
-      background: #0f1117;
-      border: 1px solid #1e293b;
-      border-radius: 6px;
-      color: #e2e8f0;
-      font-size: 0.78rem;
-      padding: 4px 10px;
-      width: 220px;
-      outline: none;
-    }
-    #token-input:focus { border-color: #4f46e5; }
-    #session-id-display { color: #475569; font-size: 0.72rem; }
-
-    /* scrollbar */
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
-  </style>
+  /* WELCOME */
+  .welcome-msg { text-align: center; color: #475569; padding: 40px 20px; }
+  .welcome-msg .icon { font-size: 40px; margin-bottom: 12px; }
+  .welcome-msg p { font-size: 14px; line-height: 1.7; }
+</style>
 </head>
 <body>
 
-<header>
-  <div>
-    <h1>⚡ Enterprise RAG</h1>
-    <div class="subtitle">Grounded answers from your internal knowledge base</div>
-  </div>
-  <div class="header-right">
-    <button id="health-badge" class="unknown" onclick="openHealth()">● Checking…</button>
-    <button id="clear-btn" onclick="clearSession()">Clear session</button>
-  </div>
-</header>
-
-<div id="token-bar">
-  <span>Bearer token:</span>
-  <input id="token-input" type="text" placeholder="Enter your auth token (or leave blank)" />
-  <span id="session-id-display"></span>
+<!-- HEADER -->
+<div id="header">
+  <h1>⚡ Enterprise RAG</h1>
+  <div id="health-badge" class="checking" onclick="toggleHealthModal()">● checking</div>
+  <button id="clear-btn" onclick="clearSession()">✕ Clear Session</button>
 </div>
 
-<main>
+<!-- TOKEN BAR -->
+<div id="token-bar">
+  <label for="token-input">Bearer Token</label>
+  <input id="token-input" type="password" placeholder="Enter API token..." autocomplete="off">
+  <span id="session-display">session: —</span>
+</div>
+
+<!-- BODY -->
+<div id="body">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+
+    <!-- UPLOAD FILES -->
+    <div class="sidebar-section">
+      <h3>Upload Files</h3>
+      <div id="drop-zone" onclick="document.getElementById('file-input').click()"
+           ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+        <input type="file" id="file-input" accept=".txt,.md,.rst,.html,.py,.js,.ts,.java" multiple onchange="onFileSelect(event)">
+        <span class="drop-icon">📄</span>
+        Drop files here or click to browse<br>
+        <span style="font-size:11px;color:#475569">.txt .md .rst .html .py .js .ts .java</span>
+      </div>
+      <div class="perm-tags-row">
+        <label for="perm-tags">Tags</label>
+        <input id="perm-tags" type="text" placeholder="e.g. internal,eng" title="Comma-separated permission tags">
+      </div>
+      <div id="upload-status"></div>
+    </div>
+
+    <!-- CONNECT SOURCE -->
+    <div class="sidebar-section">
+      <h3>Connect Source</h3>
+      <div class="source-tabs">
+        <button class="source-tab active" onclick="switchTab('github')">GitHub</button>
+        <button class="source-tab" onclick="switchTab('jira')">Jira</button>
+      </div>
+
+      <!-- GitHub form -->
+      <div id="github-form" class="source-form active">
+        <input id="gh-repo" type="text" placeholder="owner/repo" autocomplete="off">
+        <input id="gh-token" type="password" placeholder="GitHub token (optional)" autocomplete="off">
+        <button onclick="connectGitHub()">Connect GitHub</button>
+      </div>
+
+      <!-- Jira form -->
+      <div id="jira-form" class="source-form">
+        <input id="jira-url" type="text" placeholder="https://yourorg.atlassian.net" autocomplete="off">
+        <input id="jira-user" type="text" placeholder="username / email" autocomplete="off">
+        <input id="jira-token" type="password" placeholder="API token" autocomplete="off">
+        <input id="jira-project" type="text" placeholder="Project key (e.g. ENG)" autocomplete="off">
+        <button onclick="connectJira()">Connect Jira</button>
+      </div>
+
+      <div id="connect-status"></div>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <!-- CHAT PANEL -->
   <div id="chat-panel">
     <div id="messages">
-      <div class="msg assistant">
-        <div class="avatar">R</div>
-        <div class="bubble">
-          Hello! Ask me anything about your internal documentation, GitHub repositories, or Jira tickets. I'll provide grounded, cited answers.
-        </div>
+      <div class="welcome-msg">
+        <div class="icon">⚡</div>
+        <p>Ask anything about your connected knowledge sources.<br>Upload files or connect GitHub / Jira to get started.</p>
+      </div>
+    </div>
+
+    <!-- Typing indicator lives inside messages flow -->
+    <div id="typing-indicator" style="padding: 0 24px 12px;">
+      <div class="typing-bubble">
+        <div class="dot"></div><div class="dot"></div><div class="dot"></div>
       </div>
     </div>
 
     <div id="input-bar">
-      <textarea id="query-input" placeholder="Ask a question…" rows="1"></textarea>
-      <button id="send-btn" onclick="sendQuery()">Send</button>
+      <textarea id="query-input" rows="1" placeholder="Ask a question… (Enter to send, Shift+Enter for newline)"
+        onkeydown="onQueryKeydown(event)" oninput="autoResize(this)"></textarea>
+      <button id="send-btn" onclick="sendQuery()" title="Send">➤</button>
     </div>
-  </div>
-</main>
+  </div><!-- /chat-panel -->
 
-<!-- Health modal -->
-<div id="health-modal">
-  <div class="modal-box">
-    <h2>System Health</h2>
-    <div id="health-components">Loading…</div>
-    <button class="modal-close" onclick="closeHealth()">Close</button>
+</div><!-- /body -->
+
+<!-- HEALTH MODAL -->
+<div id="modal-overlay" onclick="closeHealthModal(event)">
+  <div id="health-modal">
+    <h2>System Health <button id="modal-close" onclick="closeHealthModal()">×</button></h2>
+    <div id="modal-components">
+      <div style="color:#64748b;font-size:13px">Loading…</div>
+    </div>
   </div>
 </div>
 
 <script>
-  const API = '';  // same origin
-  let sessionId = crypto.randomUUID();
-  let isLoading = false;
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let sessionId = generateId();
+let lastHealthData = null;
+let healthInterval = null;
+let isStreaming = false;
 
-  document.getElementById('session-id-display').textContent = `session: ${sessionId.slice(0,8)}…`;
+document.getElementById('session-display').textContent = 'session: ' + sessionId.slice(0, 8) + '…';
 
-  // Auto-resize textarea
-  const textarea = document.getElementById('query-input');
-  textarea.addEventListener('input', () => {
-    textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 140) + 'px';
-  });
-  textarea.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }
-  });
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+function generateId() {
+  return 'sess_' + Math.random().toString(36).slice(2, 11) + Date.now().toString(36);
+}
 
-  // ── Health check ──────────────────────────────────────────────────
-  async function checkHealth() {
-    try {
-      const r = await fetch(`${API}/health`);
-      const data = await r.json();
-      const badge = document.getElementById('health-badge');
-      badge.textContent = `● ${data.status.toUpperCase()}`;
-      badge.className = data.status;
-      return data;
-    } catch {
-      const badge = document.getElementById('health-badge');
-      badge.textContent = '● OFFLINE';
-      badge.className = 'down';
-      return null;
+function getToken() {
+  return document.getElementById('token-input').value.trim();
+}
+
+function authHeaders() {
+  const t = getToken();
+  return t ? { 'Authorization': 'Bearer ' + t } : {};
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+}
+
+function scrollToBottom() {
+  const m = document.getElementById('messages');
+  m.scrollTop = m.scrollHeight;
+}
+
+// ─── HEALTH ──────────────────────────────────────────────────────────────────
+async function checkHealth() {
+  const badge = document.getElementById('health-badge');
+  try {
+    const resp = await fetch('/health', { headers: authHeaders() });
+    const data = await resp.json();
+    lastHealthData = data;
+    const status = (data.status || 'unknown').toLowerCase();
+    badge.className = status;
+    badge.textContent = '● ' + status;
+  } catch (e) {
+    badge.className = 'down';
+    badge.textContent = '● down';
+    lastHealthData = null;
+  }
+}
+
+function toggleHealthModal() {
+  const overlay = document.getElementById('modal-overlay');
+  overlay.classList.toggle('visible');
+  if (overlay.classList.contains('visible')) renderHealthModal();
+}
+
+function closeHealthModal(e) {
+  if (!e || e.target === document.getElementById('modal-overlay') || e.currentTarget === document.getElementById('modal-close')) {
+    document.getElementById('modal-overlay').classList.remove('visible');
+  }
+}
+
+function renderHealthModal() {
+  const container = document.getElementById('modal-components');
+  if (!lastHealthData) {
+    container.innerHTML = '<div style="color:#64748b;font-size:13px">No health data. Click the badge to refresh.</div>';
+    return;
+  }
+  const components = lastHealthData.components || {};
+  if (Object.keys(components).length === 0) {
+    container.innerHTML = '<div style="color:#64748b;font-size:13px">No component details available.</div>';
+    return;
+  }
+  container.innerHTML = Object.entries(components).map(([name, info]) => {
+    const st = typeof info === 'string' ? info : (info.status || 'unknown');
+    const stClass = st.toLowerCase().replace(/[^a-z]/g, '') || 'unknown';
+    return `<div class="component-row">
+      <div class="status-dot ${stClass}"></div>
+      <div class="component-name">${escHtml(name)}</div>
+      <div class="component-status">${escHtml(st)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ─── CHAT ─────────────────────────────────────────────────────────────────────
+function onQueryKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendQuery();
+  }
+}
+
+async function sendQuery() {
+  if (isStreaming) return;
+  const input = document.getElementById('query-input');
+  const query = input.value.trim();
+  if (!query) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  document.getElementById('send-btn').disabled = true;
+
+  // Remove welcome message if present
+  const welcome = document.querySelector('.welcome-msg');
+  if (welcome) welcome.remove();
+
+  appendUserBubble(query);
+  showTyping(true);
+  isStreaming = true;
+
+  try {
+    const resp = await fetch('/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ session_id: sessionId, query })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      showTyping(false);
+      appendErrorBubble('Error ' + resp.status + ': ' + err);
+      return;
     }
-  }
 
-  async function openHealth() {
-    document.getElementById('health-modal').classList.add('open');
-    const data = await checkHealth();
-    const container = document.getElementById('health-components');
-    if (!data) { container.innerHTML = '<p style="color:#f87171">Could not reach API.</p>'; return; }
-    container.innerHTML = data.components.map(c => `
-      <div class="component-row">
-        <span><span class="status-dot ${c.status}"></span>${c.name}</span>
-        <span style="color:${c.status==='ok'?'#4ade80':c.status==='degraded'?'#fbbf24':'#f87171'}">${c.status}</span>
-      </div>
-    `).join('');
-  }
-
-  function closeHealth() {
-    document.getElementById('health-modal').classList.remove('open');
-  }
-
-  // ── Clear session ─────────────────────────────────────────────────
-  async function clearSession() {
-    try {
-      await fetch(`${API}/session/${sessionId}`, { method: 'DELETE' });
-    } catch {}
-    sessionId = crypto.randomUUID();
-    document.getElementById('session-id-display').textContent = `session: ${sessionId.slice(0,8)}…`;
-    const msgs = document.getElementById('messages');
-    msgs.innerHTML = `
-      <div class="msg assistant">
-        <div class="avatar">R</div>
-        <div class="bubble">Session cleared. Ask me a new question!</div>
-      </div>`;
-  }
-
-  // ── Send query ────────────────────────────────────────────────────
-  async function sendQuery() {
-    if (isLoading) return;
-    const input = document.getElementById('query-input');
-    const query = input.value.trim();
-    if (!query) return;
-
-    const token = document.getElementById('token-input').value.trim() || 'demo-token';
-
-    input.value = '';
-    input.style.height = 'auto';
-    appendMessage('user', query);
-
-    const typingId = appendTyping();
-    isLoading = true;
-    document.getElementById('send-btn').disabled = true;
-
-    try {
-      const resp = await fetch(`${API}/query`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ session_id: sessionId, query }),
-      });
-
-      removeTyping(typingId);
-
-      if (resp.status === 401) {
-        appendError('Authentication failed. Check your Bearer token.');
-        return;
-      }
-      if (resp.status === 503) {
-        appendError('Ollama is unavailable. Make sure it is running locally.');
-        return;
-      }
-      if (resp.status === 504) {
-        appendError('Generation timed out. Try a shorter query.');
-        return;
-      }
-      if (!resp.ok) {
-        appendError(`Server error (${resp.status}). Check the API logs.`);
-        return;
-      }
-
-      const contentType = resp.headers.get('content-type') || '';
-
-      if (contentType.includes('text/event-stream')) {
-        // SSE streaming
-        await handleSSE(resp);
-      } else {
-        const data = await resp.json();
-        renderAnswer(data);
-      }
-    } catch (err) {
-      removeTyping(typingId);
-      appendError(`Network error: ${err.message}`);
-    } finally {
-      isLoading = false;
-      document.getElementById('send-btn').disabled = false;
+    const ct = resp.headers.get('content-type') || '';
+    if (ct.includes('text/event-stream')) {
+      await handleSSE(resp);
+    } else {
+      const data = await resp.json();
+      showTyping(false);
+      appendAssistantBubble(data);
     }
+  } catch (e) {
+    showTyping(false);
+    appendErrorBubble('Network error: ' + e.message);
+  } finally {
+    isStreaming = false;
+    document.getElementById('send-btn').disabled = false;
   }
+}
 
-  async function handleSSE(resp) {
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let streamBubble = null;
-    let streamText = '';
+async function handleSSE(resp) {
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let tokens = '';
+  let finalData = null;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
+  // Create a streaming bubble
+  const bubbleId = 'bubble-' + Date.now();
+  showTyping(false);
+  const row = createAssistantRow(bubbleId);
+  document.getElementById('messages').appendChild(row);
+  scrollToBottom();
 
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const json = line.slice(6).trim();
-        if (!json) continue;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const raw = line.slice(6).trim();
+        if (raw === '[DONE]') continue;
         try {
-          const evt = JSON.parse(json);
-          if (evt.done) {
-            // Final metadata event — re-render with full citations
-            if (streamBubble) streamBubble.remove();
-            renderAnswer(evt);
-          } else if (evt.token) {
-            streamText += evt.token;
-            if (!streamBubble) {
-              streamBubble = appendStreamBubble();
-            }
-            streamBubble.querySelector('.stream-text').textContent = streamText;
+          const evt = JSON.parse(raw);
+          if (evt.token) {
+            tokens += evt.token;
+            document.getElementById(bubbleId).querySelector('.answer-text').textContent = tokens;
             scrollToBottom();
-          } else if (evt.error) {
-            appendError(`Stream error: ${evt.error}`);
           }
-        } catch {}
+          if (evt.done || evt.answer) {
+            finalData = evt;
+          }
+        } catch (_) {
+          // plain token text
+          tokens += raw;
+          document.getElementById(bubbleId).querySelector('.answer-text').textContent = tokens;
+          scrollToBottom();
+        }
       }
     }
   }
 
-  // ── DOM helpers ───────────────────────────────────────────────────
-  function appendMessage(role, text) {
-    const msgs = document.getElementById('messages');
-    const div = document.createElement('div');
-    div.className = `msg ${role}`;
-    div.innerHTML = `
-      <div class="avatar">${role === 'user' ? 'U' : 'R'}</div>
-      <div class="bubble">${escHtml(text)}</div>`;
-    msgs.appendChild(div);
-    scrollToBottom();
+  // Render final answer with citations etc.
+  if (finalData) {
+    renderAnswer(document.getElementById(bubbleId), finalData);
   }
+  scrollToBottom();
+}
 
-  function appendStreamBubble() {
-    const msgs = document.getElementById('messages');
-    const div = document.createElement('div');
-    div.className = 'msg assistant';
-    div.innerHTML = `<div class="avatar">R</div><div class="bubble"><span class="stream-text"></span></div>`;
-    msgs.appendChild(div);
-    scrollToBottom();
-    return div;
-  }
+function createAssistantRow(bubbleId) {
+  const row = document.createElement('div');
+  row.className = 'msg-row assistant';
+  row.innerHTML = `
+    <div class="avatar">🤖</div>
+    <div class="bubble" id="${bubbleId}">
+      <div class="answer-text"></div>
+    </div>`;
+  return row;
+}
 
-  function appendTyping() {
-    const msgs = document.getElementById('messages');
-    const id = 'typing-' + Date.now();
-    const div = document.createElement('div');
-    div.className = 'msg assistant';
-    div.id = id;
-    div.innerHTML = `<div class="avatar">R</div><div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>`;
-    msgs.appendChild(div);
-    scrollToBottom();
-    return id;
-  }
+function appendUserBubble(text) {
+  const row = document.createElement('div');
+  row.className = 'msg-row user';
+  row.innerHTML = `<div class="avatar">👤</div><div class="bubble">${escHtml(text)}</div>`;
+  document.getElementById('messages').appendChild(row);
+  scrollToBottom();
+}
 
-  function removeTyping(id) {
-    document.getElementById(id)?.remove();
-  }
+function appendAssistantBubble(data) {
+  const bubbleId = 'bubble-' + Date.now();
+  const row = createAssistantRow(bubbleId);
+  document.getElementById('messages').appendChild(row);
+  renderAnswer(document.getElementById(bubbleId), data);
+  scrollToBottom();
+}
 
-  function appendError(msg) {
-    const msgs = document.getElementById('messages');
-    const div = document.createElement('div');
-    div.className = 'msg assistant';
-    div.innerHTML = `<div class="avatar">R</div><div class="bubble" style="border-left:3px solid #f87171;color:#fca5a5">${escHtml(msg)}</div>`;
-    msgs.appendChild(div);
-    scrollToBottom();
-  }
+function appendErrorBubble(msg) {
+  const row = document.createElement('div');
+  row.className = 'msg-row assistant';
+  row.innerHTML = `<div class="avatar">⚠️</div><div class="bubble" style="border-color:#f87171;color:#f87171">${escHtml(msg)}</div>`;
+  document.getElementById('messages').appendChild(row);
+  scrollToBottom();
+}
 
-  function renderAnswer(data) {
-    const msgs = document.getElementById('messages');
-    const div = document.createElement('div');
-    div.className = 'msg assistant';
+function renderAnswer(bubble, data) {
+  const answer = data.answer || data.text || '';
+  const citations = data.citations || data.sources || [];
+  const score = data.grounding_score != null ? data.grounding_score : data.score;
+  const lowConf = data.low_confidence || false;
 
-    const score = typeof data.grounding_score === 'number' ? data.grounding_score : 1;
-    const scoreColor = score >= 0.7 ? '#4ade80' : score >= 0.4 ? '#fbbf24' : '#f87171';
-    const scorePct = Math.round(score * 100);
+  // Render answer text with [N] citation refs
+  const answerHtml = escHtml(answer).replace(/\[(\d+)\]/g, '<span class="cite-ref">[$1]</span>');
 
-    let citationsHtml = '';
-    if (data.citations && data.citations.length) {
-      citationsHtml = `<div class="citations">` + data.citations.map(c => `
-        <div class="citation">
-          <div class="cite-header">
-            <span class="cite-num">[${c.number}]</span>
-            <span class="cite-title">${escHtml(c.document_title)}</span>
-            <span class="cite-type">${escHtml(c.source_type)}</span>
-          </div>
-          <div class="cite-url"><a href="${escHtml(c.document_url)}" target="_blank">${escHtml(c.document_url)}</a></div>
-          ${c.excerpt ? `<div class="cite-excerpt">"${escHtml(c.excerpt.slice(0,200))}${c.excerpt.length>200?'…':''}"</div>` : ''}
-        </div>`).join('') + `</div>`;
-    }
+  let html = `<div class="answer-text">${answerHtml}</div>`;
 
-    const warningHtml = data.warning
-      ? `<div class="warning">⚠ ${escHtml(data.warning)}</div>` : '';
-
-    const graphHtml = data.dependency_graph_unavailable
-      ? `<div class="graph-notice">ℹ Dependency graph unavailable — showing vector-only results.</div>` : '';
-
-    div.innerHTML = `
-      <div class="avatar">R</div>
-      <div class="bubble">
-        <div>${formatAnswer(data.answer)}</div>
-        ${warningHtml}
-        ${graphHtml}
-        ${citationsHtml}
-        <div class="grounding">
-          <span>Grounding: ${scorePct}%</span>
-          <div class="grounding-bar">
-            <div class="grounding-fill" style="width:${scorePct}%;background:${scoreColor}"></div>
-          </div>
-        </div>
+  // Citations
+  if (citations.length > 0) {
+    html += '<div class="citations">';
+    citations.forEach((c, i) => {
+      const num = c.index != null ? c.index : i + 1;
+      const title = c.title || c.source || c.doc_id || 'Source ' + num;
+      const url = c.url || c.link || '';
+      const excerpt = c.excerpt || c.text || c.content || '';
+      html += `<div class="citation-item">
+        <span class="cite-num">[${num}]</span><span class="cite-title">${escHtml(title)}</span>
+        ${url ? `<a class="cite-url" href="${escHtml(url)}" target="_blank" rel="noopener">${escHtml(url)}</a>` : ''}
+        ${excerpt ? `<div class="cite-excerpt">"${escHtml(excerpt.slice(0, 200))}${excerpt.length > 200 ? '…' : ''}"</div>` : ''}
       </div>`;
-    msgs.appendChild(div);
-    scrollToBottom();
+    });
+    html += '</div>';
   }
 
-  function formatAnswer(text) {
-    // Highlight [N] citation refs
-    return escHtml(text).replace(/\[(\d+)\]/g, '<sup style="color:#a78bfa;font-weight:700">[$1]</sup>');
+  // Grounding score
+  if (score != null) {
+    const pct = Math.round(score * 100);
+    const color = pct >= 70 ? '#4ade80' : pct >= 40 ? '#facc15' : '#f87171';
+    html += `<div class="grounding-bar">
+      <div class="grounding-label"><span>Grounding score</span><span>${pct}%</span></div>
+      <div class="grounding-track"><div class="grounding-fill" style="width:${pct}%;background:${color}"></div></div>
+    </div>`;
   }
 
-  function escHtml(s) {
-    return String(s)
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  // Low confidence warning
+  if (lowConf) {
+    html += `<div class="low-conf-warning">⚠ Low confidence — answer may be incomplete or uncertain.</div>`;
   }
 
-  function scrollToBottom() {
-    const msgs = document.getElementById('messages');
-    msgs.scrollTop = msgs.scrollHeight;
+  bubble.innerHTML = html;
+}
+
+function showTyping(visible) {
+  const el = document.getElementById('typing-indicator');
+  el.classList.toggle('visible', visible);
+  if (visible) scrollToBottom();
+}
+
+// ─── CLEAR SESSION ────────────────────────────────────────────────────────────
+async function clearSession() {
+  try {
+    await fetch('/session/' + sessionId, { method: 'DELETE', headers: authHeaders() });
+  } catch (_) {}
+  sessionId = generateId();
+  document.getElementById('session-display').textContent = 'session: ' + sessionId.slice(0, 8) + '…';
+  document.getElementById('messages').innerHTML = `
+    <div class="welcome-msg">
+      <div class="icon">⚡</div>
+      <p>Session cleared. Ask anything about your connected knowledge sources.</p>
+    </div>`;
+}
+
+// ─── FILE UPLOAD ──────────────────────────────────────────────────────────────
+function onDragOver(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.add('drag-over');
+}
+function onDragLeave(e) {
+  document.getElementById('drop-zone').classList.remove('drag-over');
+}
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag-over');
+  const files = Array.from(e.dataTransfer.files);
+  files.forEach(uploadFile);
+}
+function onFileSelect(e) {
+  Array.from(e.target.files).forEach(uploadFile);
+  e.target.value = '';
+}
+
+async function uploadFile(file) {
+  const status = document.getElementById('upload-status');
+  const tags = document.getElementById('perm-tags').value.trim() || 'public';
+  status.className = 'uploading';
+  status.textContent = `⏳ Uploading ${file.name}…`;
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('permission_tags', tags);
+
+  try {
+    const resp = await fetch('/upload', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: fd
+    });
+    if (resp.ok) {
+      status.className = 'success';
+      status.textContent = `✓ ${file.name} indexed!`;
+    } else {
+      const err = await resp.text();
+      status.className = 'error';
+      status.textContent = `✗ ${file.name}: ${err.slice(0, 80)}`;
+    }
+  } catch (e) {
+    status.className = 'error';
+    status.textContent = `✗ Network error: ${e.message}`;
+  }
+}
+
+// ─── CONNECT SOURCE ───────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.source-tab').forEach((el, i) => {
+    el.classList.toggle('active', (i === 0 && tab === 'github') || (i === 1 && tab === 'jira'));
+  });
+  document.getElementById('github-form').classList.toggle('active', tab === 'github');
+  document.getElementById('jira-form').classList.toggle('active', tab === 'jira');
+  document.getElementById('connect-status').textContent = '';
+  document.getElementById('connect-status').className = '';
+}
+
+async function connectGitHub() {
+  const repo = document.getElementById('gh-repo').value.trim();
+  const token = document.getElementById('gh-token').value.trim();
+  const status = document.getElementById('connect-status');
+
+  if (!repo) { status.className = 'error'; status.textContent = '✗ Repository is required (owner/repo)'; return; }
+
+  // GitHub connector is configured via environment variables on the server.
+  // The token field here is informational — set GITHUB_TOKEN env var on the server.
+  status.className = 'info';
+  status.textContent = 'ℹ GitHub connector uses server-side env vars (GITHUB_TOKEN). Triggering ingest…';
+
+  const btn = document.querySelector('#github-form button');
+  btn.disabled = true;
+  try {
+    const resp = await fetch('/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ source_id: 'github', repo, full: true })
+    });
+    if (resp.ok) {
+      status.className = 'success';
+      status.textContent = `✓ GitHub ingest started for ${repo}`;
+    } else {
+      const err = await resp.text();
+      status.className = 'error';
+      status.textContent = `✗ ${err.slice(0, 120)}`;
+    }
+  } catch (e) {
+    status.className = 'error';
+    status.textContent = `✗ Network error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function connectJira() {
+  const url = document.getElementById('jira-url').value.trim();
+  const user = document.getElementById('jira-user').value.trim();
+  const token = document.getElementById('jira-token').value.trim();
+  const project = document.getElementById('jira-project').value.trim();
+  const status = document.getElementById('connect-status');
+
+  if (!url || !user || !token || !project) {
+    status.className = 'error';
+    status.textContent = '✗ All Jira fields are required';
+    return;
   }
 
-  // ── Init ──────────────────────────────────────────────────────────
-  checkHealth();
-  setInterval(checkHealth, 30000);
+  status.className = 'connecting';
+  status.textContent = '⏳ Connecting to Jira…';
+
+  const btn = document.querySelector('#jira-form button');
+  btn.disabled = true;
+  try {
+    const resp = await fetch('/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ source_id: 'jira', url, username: user, token, project_key: project, full: true })
+    });
+    if (resp.ok) {
+      status.className = 'success';
+      status.textContent = `✓ Jira ingest started for project ${project}`;
+    } else {
+      const err = await resp.text();
+      status.className = 'error';
+      status.textContent = `✗ ${err.slice(0, 120)}`;
+    }
+  } catch (e) {
+    status.className = 'error';
+    status.textContent = `✗ Network error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ─── ESCAPE HTML ──────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+checkHealth();
+healthInterval = setInterval(checkHealth, 30000);
 </script>
 </body>
 </html>

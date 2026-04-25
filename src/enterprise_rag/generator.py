@@ -148,7 +148,7 @@ class Generator:
                 f"{self.ollama_url}/api/generate",
                 json=payload,
                 stream=True,
-                timeout=30,
+                timeout=120,
             )
             response.raise_for_status()
             for line in response.iter_lines():
@@ -160,7 +160,7 @@ class Generator:
                     if data.get("done", False):
                         break
         except requests.exceptions.Timeout as exc:
-            raise TimeoutError("Ollama generation timed out after 30 seconds.") from exc
+            raise TimeoutError("Ollama generation timed out after 120 seconds.") from exc
         except requests.exceptions.ConnectionError as exc:
             raise ConnectionError(
                 f"Cannot connect to Ollama at {self.ollama_url}."
@@ -183,12 +183,12 @@ class Generator:
                 f"{self.ollama_url}/api/generate",
                 json=payload,
                 stream=False,
-                timeout=30,
+                timeout=120,
             )
             response.raise_for_status()
             return response.json().get("response", "")
         except requests.exceptions.Timeout as exc:
-            raise TimeoutError("Ollama generation timed out after 30 seconds.") from exc
+            raise TimeoutError("Ollama generation timed out after 120 seconds.") from exc
         except requests.exceptions.ConnectionError as exc:
             raise ConnectionError(
                 f"Cannot connect to Ollama at {self.ollama_url}."
