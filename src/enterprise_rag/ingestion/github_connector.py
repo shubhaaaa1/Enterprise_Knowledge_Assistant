@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterator, List, Optional
 
 import requests
@@ -84,7 +84,7 @@ class GitHubConnector(SourceConnector):
             content = self._get_blob_content(blob_url)
             if content is None:
                 continue
-            yield self._make_document(path, content, datetime.utcnow())
+            yield self._make_document(path, content, datetime.now(timezone.utc))
 
     def fetch_incremental(self, since: datetime) -> Iterator[Document]:
         since_str = since.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -114,7 +114,7 @@ class GitHubConnector(SourceConnector):
                 try:
                     commit_date = datetime.strptime(commit_date_str, "%Y-%m-%dT%H:%M:%SZ")
                 except ValueError:
-                    commit_date = datetime.utcnow()
+                    commit_date = datetime.now(timezone.utc)
                 for f in commit_data.get("files", []):
                     fpath = f.get("filename", "")
                     if fpath and fpath not in changed_paths:

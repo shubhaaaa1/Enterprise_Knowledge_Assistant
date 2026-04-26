@@ -145,6 +145,7 @@ class StructuredLogger:
         """Emit a structured error log entry."""
         record = {
             "event": "error",
+            "timestamp": _utc_now(),
             "severity": severity,
             "component_name": component_name,
             "error_message": error_message,

@@ -5,11 +5,10 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Dict, Iterator, List, Optional
 
 from enterprise_rag.ast_parser import ASTParser, _ext, _NON_PARSEABLE_EXTENSIONS
-from enterprise_rag.graph_store import GraphStore
 from enterprise_rag.ingestion.base import SourceConnector
 from enterprise_rag.models import (
     Chunk,
@@ -51,10 +50,10 @@ class IngestionPipeline:
     def __init__(
         self,
         vector_store: VectorStore,
-        graph_store: GraphStore,
         connectors: Dict[str, SourceConnector],
         embed_fn: Callable[[List[Chunk]], List[EmbeddedChunk]],
         ast_parser: ASTParser,
+        graph_store=None,
         db_conn=None,
     ) -> None:
         self._vector_store = vector_store
@@ -92,7 +91,7 @@ class IngestionPipeline:
                     text=text,
                     token_count=len(window),
                     permission_tags=list(doc.permission_tags),
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(timezone.utc),
                     source_modified_at=doc.modified_at,
                 )
             )
@@ -110,18 +109,12 @@ class IngestionPipeline:
         """Writes embedded chunks to the VectorStore."""
         self._vector_store.upsert(chunks)
 
-    def index_graph(self, symbols: List[CodeSymbol]) -> None:
-        """Writes CodeSymbols to the GraphStore (upsert nodes then relationships)."""
-        self._graph_store.upsert_symbols(symbols)
-        self._graph_store.upsert_relationships(symbols)
-
     def run(self, source_id: str, incremental: bool = True) -> JobResult:
-        """Orchestrate fetch → chunk → embed → index → index_graph."""
+        """Orchestrate fetch → chunk → embed → index."""
         job_id = str(uuid.uuid4())
         chunks_indexed = 0
         symbols_indexed = 0
         error_message: Optional[str] = None
-        graph_failed = False
 
         connector = self._connectors.get(source_id)
         if connector is None:
@@ -133,7 +126,7 @@ class IngestionPipeline:
                 status="failed",
                 chunks_indexed=0,
                 symbols_indexed=0,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
                 error_message=error_message,
             )
             self._write_job_log(result)
@@ -174,7 +167,7 @@ class IngestionPipeline:
                 status="failed",
                 chunks_indexed=0,
                 symbols_indexed=0,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
                 error_message=error_message,
             )
             self._write_job_log(result)
@@ -187,31 +180,6 @@ class IngestionPipeline:
                 embedded = self.embed(doc_chunks)
                 self.index(embedded)
                 chunks_indexed += len(embedded)
-
-                # For GitHub sources: attempt AST parsing for code files
-                if doc.source_type == "github":
-                    ext = _ext(doc.url if doc.url else doc.title)
-                    if ext in _PARSEABLE_EXTENSIONS:
-                        language = _EXT_TO_LANGUAGE.get(ext, "python")
-                        symbols = self._ast_parser.parse(
-                            file_path=doc.url or doc.title,
-                            content=doc.content,
-                            language=language,
-                            source_id=doc.source_id,
-                            permission_tags=doc.permission_tags,
-                        )
-                        if symbols:
-                            if not graph_failed:
-                                try:
-                                    self.index_graph(symbols)
-                                    symbols_indexed += len(symbols)
-                                except Exception as graph_exc:
-                                    graph_failed = True
-                                    logger.error(
-                                        "Neo4j unavailable during index_graph for '%s': %s",
-                                        source_id,
-                                        graph_exc,
-                                    )
             except Exception as doc_exc:
                 logger.error(
                     "Error processing document '%s' from source '%s': %s",
@@ -224,9 +192,6 @@ class IngestionPipeline:
         status = "success"
         if fetch_error is not None:
             status = "failed"
-        elif graph_failed:
-            status = "partial"
-            error_message = "Neo4j graph indexing failed; ChromaDB indexing completed"
 
         result = JobResult(
             job_id=job_id,
@@ -234,7 +199,7 @@ class IngestionPipeline:
             status=status,
             chunks_indexed=chunks_indexed,
             symbols_indexed=symbols_indexed,
-            completed_at=datetime.utcnow(),
+            completed_at=datetime.now(timezone.utc),
             error_message=error_message,
         )
         self._write_job_log(result)

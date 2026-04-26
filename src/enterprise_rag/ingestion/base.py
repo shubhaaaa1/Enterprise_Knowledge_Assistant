@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterator, List
 
 from enterprise_rag.models import ComponentStatus, Document
@@ -27,6 +27,6 @@ class SourceConnector(ABC):
         return ComponentStatus(
             name=self.__class__.__name__,
             status="ok",
-            last_checked=datetime.utcnow(),
+            last_checked=datetime.now(timezone.utc),
             detail=None,
         )

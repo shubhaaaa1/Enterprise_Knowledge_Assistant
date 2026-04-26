@@ -1,3 +1,4 @@
+README.md
 pyproject.toml
 src/enterprise_rag/__init__.py
 src/enterprise_rag/access_controller.py

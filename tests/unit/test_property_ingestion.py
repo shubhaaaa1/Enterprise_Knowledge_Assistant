@@ -278,28 +278,3 @@ def test_property_4_ingestion_job_log_completeness(docs: List[Document]):
 # Feature: enterprise-rag-system, Property 25: Dual-store ingestion consistency
 # Validates: Requirements 1.8
 # ---------------------------------------------------------------------------
-
-@given(symbols=st.lists(_code_symbol_st, min_size=0, max_size=10))
-@settings(max_examples=20, deadline=None)
-def test_property_25_dual_store_ingestion_consistency(symbols: List[CodeSymbol]):
-    """After index_graph, both upsert_symbols and upsert_relationships are called with the same symbols.
-
-    Validates: Requirements 1.8
-    """
-    # Feature: enterprise-rag-system, Property 25: Dual-store ingestion consistency
-    graph_store = MagicMock()
-    vector_store = MagicMock()
-
-    pipeline = _make_pipeline(graph_store=graph_store, vector_store=vector_store)
-    pipeline.index_graph(symbols)
-
-    # Both methods must have been called exactly once
-    graph_store.upsert_symbols.assert_called_once_with(symbols)
-    graph_store.upsert_relationships.assert_called_once_with(symbols)
-
-    # Both calls must have received the same symbols list
-    symbols_arg = graph_store.upsert_symbols.call_args[0][0]
-    relationships_arg = graph_store.upsert_relationships.call_args[0][0]
-    assert symbols_arg == relationships_arg, (
-        "upsert_symbols and upsert_relationships must be called with the same symbols list"
-    )

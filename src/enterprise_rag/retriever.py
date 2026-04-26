@@ -1,8 +1,7 @@
 """Hybrid retriever for the Enterprise RAG System.
 
 Combines semantic (vector) search with BM25 keyword scoring, merges results
-across query variants using Reciprocal Rank Fusion (RRF), and optionally
-enriches results with code dependency graph data from Neo4j.
+across query variants using Reciprocal Rank Fusion (RRF).
 """
 
 from __future__ import annotations
@@ -16,12 +15,6 @@ from enterprise_rag.models import AccessFilter, ScoredChunk
 from enterprise_rag.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
-
-# Keywords that indicate a code-related query
-_CODE_KEYWORDS = {
-    "function", "class", "method", "import", "calls", "inherits",
-    "module", "def ", "->", "::", ".py", ".js",
-}
 
 # Standard RRF constant
 _RRF_K = 60
@@ -92,17 +85,8 @@ def _bm25_scores(query_tokens: List[str], chunks: List[ScoredChunk]) -> List[flo
     return scores
 
 
-def _is_code_query(variants: List[str]) -> bool:
-    """Return True if any variant looks like a code-related query."""
-    combined = " ".join(variants).lower()
-    return any(kw in combined for kw in _CODE_KEYWORDS)
-
-
 class Retriever:
-    """Hybrid retriever: semantic + BM25 with RRF merging across query variants.
-
-    Optionally queries the Neo4j graph store for code-related queries.
-    """
+    """Hybrid retriever: semantic + BM25 with RRF merging across query variants."""
 
     def __init__(
         self,
@@ -192,10 +176,6 @@ class Retriever:
         # Sort by RRF score descending
         results.sort(key=lambda c: c.rrf_score, reverse=True)
 
-        # Code-related query: enrich with graph results
-        if _is_code_query(variants) and self._graph_store is not None:
-            results = self._enrich_with_graph(variants, results)
-
         return results[:k]
 
     # ------------------------------------------------------------------
@@ -240,30 +220,3 @@ class Retriever:
 
         scored.sort(key=lambda x: x[0], reverse=True)
         return [c for _, c in scored]
-
-    def _enrich_with_graph(
-        self, variants: List[str], chunks: List[ScoredChunk]
-    ) -> List[ScoredChunk]:
-        """Attempt to query Neo4j for dependency context; degrade gracefully on failure."""
-        # Extract a candidate symbol name from the first variant (heuristic: longest word)
-        tokens = _tokenize(" ".join(variants))
-        if not tokens:
-            return chunks
-
-        symbol = max(tokens, key=len)
-
-        try:
-            dep_graph = self._graph_store.query_dependencies(symbol, direction="both", depth=2)
-            logger.debug(
-                "Graph query for symbol '%s' returned %d nodes, %d edges",
-                symbol,
-                len(dep_graph.nodes),
-                len(dep_graph.edges),
-            )
-        except Exception as exc:
-            logger.warning(
-                "Neo4j unavailable during retrieval — falling back to vector-only: %s", exc
-            )
-            self.last_dependency_graph_unavailable = True
-
-        return chunks

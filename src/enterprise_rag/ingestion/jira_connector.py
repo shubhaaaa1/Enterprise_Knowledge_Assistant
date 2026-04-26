@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterator, List, Optional
 
 import requests
@@ -87,7 +87,7 @@ class JiraConnector(SourceConnector):
         try:
             modified_at = datetime.strptime(updated_str[:19], "%Y-%m-%dT%H:%M:%S")
         except (ValueError, TypeError):
-            modified_at = datetime.utcnow()
+            modified_at = datetime.now(timezone.utc)
 
         return Document(
             doc_id=str(uuid.uuid4()),

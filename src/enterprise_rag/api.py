@@ -12,6 +12,7 @@ Requirements: 2.4, 5.4, 8.2, 10.3, 10.4
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import uuid
@@ -39,6 +40,8 @@ from enterprise_rag.models import (
 )
 from enterprise_rag.query_rewriter import QueryRewriter
 from enterprise_rag.retriever import Retriever
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Enterprise RAG System", version="1.0.0")
 
@@ -169,7 +172,6 @@ def get_structured_logger() -> StructuredLogger:
 def _make_ingestion_pipeline() -> Optional[IngestionPipeline]:
     """Build an IngestionPipeline from environment variables if configured."""
     from enterprise_rag.ast_parser import ASTParser
-    from enterprise_rag.graph_store import GraphStore
     from enterprise_rag.ingestion.github_connector import GitHubConnector
     from enterprise_rag.ingestion.docs_connector import DocsConnector
     from enterprise_rag.ingestion.jira_connector import JiraConnector
@@ -217,15 +219,6 @@ def _make_ingestion_pipeline() -> Optional[IngestionPipeline]:
     chroma_path = os.environ.get("CHROMA_PATH", "./chroma_data")
     vs = VectorStore(persist_path=chroma_path)
 
-    # GraphStore — optional, skip if Neo4j not configured
-    neo4j_uri = os.environ.get("NEO4J_URI", "")
-    neo4j_user = os.environ.get("NEO4J_USER", "neo4j")
-    neo4j_pass = os.environ.get("NEO4J_PASSWORD", "")
-    try:
-        gs = GraphStore(uri=neo4j_uri or "bolt://localhost:7687", user=neo4j_user, password=neo4j_pass)
-    except Exception:
-        gs = None
-
     # Simple embedding function using sentence-transformers if available, else random
     def _embed_fn(chunks):
         try:
@@ -247,7 +240,7 @@ def _make_ingestion_pipeline() -> Optional[IngestionPipeline]:
 
     return IngestionPipeline(
         vector_store=vs,
-        graph_store=gs,
+        graph_store=None,
         connectors=connectors,
         embed_fn=_embed_fn,
         ast_parser=ASTParser(),
@@ -529,7 +522,7 @@ async def health_endpoint(
 ) -> HealthResponse:
     """Return health status for all system components.
 
-    Checks: ollama, chromadb, neo4j, session_store, and source connectors.
+    Checks: ollama, chromadb, session_store, and source connectors.
     Requirements: 10.3
     """
     components: List[HealthComponentOut] = []
@@ -550,31 +543,6 @@ async def health_endpoint(
             status="down",
             last_checked=now_str,
             detail=str(exc),
-        ))
-
-    # Neo4j
-    if ret._graph_store is not None:
-        try:
-            neo4j_status = ret._graph_store.health_check()
-            components.append(HealthComponentOut(
-                name=neo4j_status.name,
-                status=neo4j_status.status,
-                last_checked=neo4j_status.last_checked.isoformat(),
-                detail=neo4j_status.detail,
-            ))
-        except Exception as exc:
-            components.append(HealthComponentOut(
-                name="neo4j",
-                status="down",
-                last_checked=now_str,
-                detail=str(exc),
-            ))
-    else:
-        components.append(HealthComponentOut(
-            name="neo4j",
-            status="degraded",
-            last_checked=now_str,
-            detail="Neo4j not configured",
         ))
 
     # Ollama — attempt a lightweight connectivity check
@@ -662,21 +630,12 @@ def _run_upload_ingestion(file_path: str, source_id: str, permission_tags: list)
     """Background task: ingest a single uploaded file."""
     import pathlib
     from enterprise_rag.ast_parser import ASTParser
-    from enterprise_rag.graph_store import GraphStore
     from enterprise_rag.ingestion.pipeline import IngestionPipeline
     from enterprise_rag.models import Document, EmbeddedChunk
     from enterprise_rag.vector_store import VectorStore
 
     chroma_path = os.environ.get("CHROMA_PATH", "./chroma_data")
     vs = VectorStore(persist_path=chroma_path)
-
-    neo4j_uri = os.environ.get("NEO4J_URI", "")
-    neo4j_user = os.environ.get("NEO4J_USER", "neo4j")
-    neo4j_pass = os.environ.get("NEO4J_PASSWORD", "")
-    try:
-        gs = GraphStore(uri=neo4j_uri or "bolt://localhost:7687", user=neo4j_user, password=neo4j_pass)
-    except Exception:
-        gs = None
 
     def _embed_fn(chunks):
         try:
@@ -708,7 +667,7 @@ def _run_upload_ingestion(file_path: str, source_id: str, permission_tags: list)
 
     pipeline = IngestionPipeline(
         vector_store=vs,
-        graph_store=gs,
+        graph_store=None,
         connectors={},
         embed_fn=_embed_fn,
         ast_parser=ASTParser(),

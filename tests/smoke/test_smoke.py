@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import tempfile
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterator, List
 from unittest.mock import MagicMock, patch
 
@@ -200,7 +200,7 @@ def test_github_ingestion_ast_symbols_in_both_stores():
         url="https://github.com/org/repo/blob/HEAD/example.py",
         content=python_source,
         permission_tags=["engineering"],
-        modified_at=datetime.utcnow(),
+        modified_at=datetime.now(timezone.utc),
     )
 
     # Mock connector that yields the document

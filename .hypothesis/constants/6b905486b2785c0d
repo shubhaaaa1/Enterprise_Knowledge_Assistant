@@ -1,0 +1,4 @@
+# file: D:\Enterprise_Knowledge_Assistant\src\enterprise_rag\ingestion\docs_connector.py
+# hypothesis_version: 6.151.10
+
+['.html', '.md', '.rst', '.txt', 'docs', 'r', 'replace', 'utf-8']

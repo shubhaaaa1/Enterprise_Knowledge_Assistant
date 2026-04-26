@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterator, List, Optional
 
 from enterprise_rag.ingestion.base import SourceConnector
@@ -35,7 +35,7 @@ class DocsConnector(SourceConnector):
 
     def _make_document(self, file_path: str) -> Document:
         stat = os.stat(file_path)
-        modified_at = datetime.utcfromtimestamp(stat.st_mtime)
+        modified_at = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
         with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
             content = fh.read()
         return Document(
@@ -56,6 +56,6 @@ class DocsConnector(SourceConnector):
     def fetch_incremental(self, since: datetime) -> Iterator[Document]:
         for file_path in self._iter_files():
             stat = os.stat(file_path)
-            mtime = datetime.utcfromtimestamp(stat.st_mtime)
+            mtime = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
             if mtime > since:
                 yield self._make_document(file_path)

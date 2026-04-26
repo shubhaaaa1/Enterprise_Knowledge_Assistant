@@ -61,15 +61,6 @@ class CodeSymbol:
 
 
 @dataclass
-class DependencyGraph:
-    nodes: List[Dict]                  # {id, label, name, file_path}
-    edges: List[Dict]                  # {source, target, relationship}
-    root_symbol: str
-    direction: str                     # "callers" | "callees" | "both"
-    depth: int
-
-
-@dataclass
 class Citation:
     number: int
     source_type: str
@@ -97,7 +88,7 @@ class CitedAnswer:
     grounding_score: float             # cited_claims / total_claims
     unverified_claims: List[str]       # claims with no chunk mapping
     low_confidence_warning: bool       # grounding_score < 0.7
-    dependency_graph_unavailable: bool # True if Neo4j was unreachable
+    dependency_graph_unavailable: bool # True if graph store was unreachable
 
 
 @dataclass
@@ -124,7 +115,7 @@ class JobResult:
     source_id: str
     status: str                        # "success" | "failed"
     chunks_indexed: int
-    symbols_indexed: int               # CodeSymbols written to Neo4j
+    symbols_indexed: int               # CodeSymbols indexed
     completed_at: datetime
     error_message: Optional[str]
 
