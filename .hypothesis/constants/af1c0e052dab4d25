@@ -1,4 +1,0 @@
-# file: C:\Users\shubh\Enterprise_Knowledge_Assistant\src\enterprise_rag\ingestion\jira_connector.py
-# hypothesis_version: 6.151.10
-
-[100, '%Y-%m-%d', '%Y-%m-%dT%H:%M:%S', '/', 'body', 'comments', 'description', 'fields', 'issues', 'jira', 'key', 'summary', 'total', 'updated']

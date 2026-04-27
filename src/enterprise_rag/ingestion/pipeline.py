@@ -67,8 +67,25 @@ class IngestionPipeline:
     # Public API
     # ------------------------------------------------------------------
 
-    def chunk(self, doc: Document, size: int = 512, overlap: int = 64) -> List[Chunk]:
-        """Token-based chunking with overlap using whitespace tokenization."""
+    def chunk(self, doc: Document, size: int = None, overlap: int = None) -> List[Chunk]:
+        """Token-based chunking with overlap using whitespace tokenization.
+        
+        Args:
+            doc: Document to chunk
+            size: Chunk size in tokens (default: 1024, configurable via CHUNK_SIZE env var)
+            overlap: Overlap size in tokens (default: 128, configurable via CHUNK_OVERLAP env var)
+        
+        Returns:
+            List of chunks with metadata
+        """
+        import os
+        
+        # Use provided values, or fall back to env vars, or use defaults
+        if size is None:
+            size = int(os.environ.get("CHUNK_SIZE", "1024"))
+        if overlap is None:
+            overlap = int(os.environ.get("CHUNK_OVERLAP", "128"))
+        
         tokens = doc.content.split(" ")
         if not tokens or (len(tokens) == 1 and tokens[0] == ""):
             return []

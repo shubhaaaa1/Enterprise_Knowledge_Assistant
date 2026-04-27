@@ -1,6 +1,6 @@
 """Query rewriter component for the Enterprise RAG System.
 
-Rewrites/expands user queries using Ollama to improve retrieval recall.
+Rewrites/expands user queries using Groq API to improve retrieval recall.
 Incorporates the last 5 turns of conversation history for context resolution.
 """
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class QueryRewriter:
-    """Rewrites user queries using an Ollama LLM backend.
+    """Rewrites user queries using Groq API.
 
     On timeout or any error, falls back to returning the original query
     so retrieval can always proceed.
@@ -34,13 +34,14 @@ class QueryRewriter:
 
     def __init__(
         self,
-        ollama_url: str = "http://localhost:11434",
-        model: str = "llama3",
+        api_key: str,
+        model: str = "llama-3.1-8b-instant",
         timeout: float = 5.0,
     ) -> None:
-        self.ollama_url = ollama_url.rstrip("/")
+        self.api_key = api_key
         self.model = model
         self.timeout = timeout
+        self.api_url = "https://api.groq.com/openai/v1/chat/completions"
 
     # ------------------------------------------------------------------
     # Public API
@@ -57,7 +58,7 @@ class QueryRewriter:
         Args:
             query: The user's original query text.
             history: Full conversation history; only the last 5 turns are used.
-            max_variants: Number of alternative phrasings to request from Ollama.
+            max_variants: Number of alternative phrasings to request from Groq.
 
         Returns:
             A list with at least one element (the original query).
@@ -67,24 +68,40 @@ class QueryRewriter:
 
         try:
             response = requests.post(
-                f"{self.ollama_url}/api/generate",
-                json={"model": self.model, "prompt": prompt, "stream": False},
+                self.api_url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.7,
+                },
                 timeout=self.timeout,
             )
             response.raise_for_status()
             data = response.json()
-            raw_text: str = data.get("response", "")
+            raw_text: str = data.get("choices", [{}])[0].get("message", {}).get("content", "")
             variants = self._parse_variants(raw_text, max_variants)
             # Always prepend the original query as the first variant
             return [query] + variants
 
         except requests.Timeout:
             logger.warning(
-                "QueryRewriter timeout after %.1fs for session_id=%s query=%r",
+                "QueryRewriter timeout after %.1fs for query=%r",
                 self.timeout,
-                "unknown",
                 query,
             )
+            return [query]
+
+        except requests.HTTPError as exc:
+            if exc.response.status_code == 401:
+                logger.error("QueryRewriter: Invalid Groq API key")
+            elif exc.response.status_code == 429:
+                logger.error("QueryRewriter: Groq rate limit exceeded")
+            else:
+                logger.error("QueryRewriter HTTP error for query=%r: %s", query, exc)
             return [query]
 
         except Exception as exc:  # noqa: BLE001

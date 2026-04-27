@@ -1,178 +1,320 @@
 # Enterprise RAG System
 
-A locally-hosted Retrieval-Augmented Generation (RAG) platform that lets employees ask natural language questions against internal knowledge sources — documentation, GitHub repositories, and Jira tickets — and receive grounded, cited answers.
-
-All LLM inference runs through a local [Ollama](https://ollama.com) instance, so no enterprise data ever leaves your network.
+An intelligent document Q&A system that lets you chat with your documents, code, and knowledge bases using AI. Upload files, connect data sources, and get instant answers with citations.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-green)
 ![ChromaDB](https://img.shields.io/badge/ChromaDB-0.5+-orange)
-![Ollama](https://img.shields.io/badge/Ollama-local-purple)
+![Groq](https://img.shields.io/badge/Groq-API-purple)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 ---
 
-## Features
+## What is This?
 
-- **Multi-source ingestion** — ingest from local docs, GitHub repos, and Jira projects
-- **File upload** — drag-and-drop files directly from the browser UI
-- **Hybrid search** — semantic similarity + BM25 keyword matching with Reciprocal Rank Fusion
-- **Grounded answers** — every answer is backed by retrieved chunks with inline citations
-- **Citation highlighting** — source title, URL, and excerpt for every claim
-- **Grounding score** — ratio of cited claims to total claims, shown per answer
-- **Role-based access control (RBAC)** — filter retrievable content by user roles
-- **Conversational memory** — multi-turn sessions with 60-minute inactivity expiry
-- **Query rewriting** — automatic query expansion using conversation history
-- **Code dependency graph** — AST parsing + Neo4j graph for code structure queries
-- **Local-only inference** — Ollama backend, no external API calls
-- **Web UI** — built-in chat interface served at `/`
+Enterprise RAG is a **Retrieval-Augmented Generation** system that turns your documents into an intelligent Q&A assistant. Think of it as ChatGPT for your own documents - upload files, ask questions, and get accurate answers with source citations.
+
+### Key Features
+
+🚀 **Ultra-Fast Responses** - Get answers in 1-2 seconds using Groq API  
+📁 **Folder Upload** - Upload entire folders of documents at once  
+🔍 **Smart Search** - Hybrid semantic + keyword search finds the most relevant content  
+📚 **Source Citations** - Every answer includes citations with excerpts from source documents  
+💬 **Conversational** - Multi-turn conversations with context memory  
+🎯 **Accurate** - Grounding scores show how well answers are supported by your documents  
+️ **Easy Management** - List and delete uploaded sources anytime  
+🌐 **Open Access** - No authentication required - simple and straightforward
 
 ---
 
-## Architecture
+## Quick Demo
 
+1. **Upload your documents** (drag & drop folders)
+2. **Ask questions** in natural language
+3. **Get instant answers** with citations showing exactly where the information came from
+
+Example:
 ```
-User → FastAPI (api.py)
-         ├── AccessController   — token validation, RBAC filter
-         ├── ConversationManager — session history (Redis + Postgres)
-         ├── QueryRewriter      — query expansion via Ollama
-         ├── Retriever          — hybrid search (ChromaDB + Neo4j)
-         ├── Generator          — answer generation via Ollama
-         └── CitationEngine     — citation mapping + grounding score
-
-Background:
-  IngestionPipeline → DocsConnector / GitHubConnector / JiraConnector
-                    → ASTParser → VectorStore (ChromaDB) + GraphStore (Neo4j)
+You: "What is the refund policy?"
+AI: "The refund policy allows returns within 30 days [1]. 
+     Full refunds are provided for unused items [2]."
+     
+     [1] refund-policy.pdf - "Customers may return items within 30 days..."
+     [2] terms.txt - "Full refunds will be issued for items in original condition..."
 ```
 
 ---
 
-## Prerequisites
+## Getting Started
 
-| Requirement | Version | Notes |
-|---|---|---|
-| Python | 3.11+ | |
-| [Ollama](https://ollama.com) | latest | Must be running locally |
-| ChromaDB | auto-installed | Persistent local storage |
-| Neo4j | optional | Only needed for code dependency graph |
+### Prerequisites
 
----
+- **Python 3.11+** installed
+- **Internet connection** (for Groq API)
+- **Groq API key** (free at https://console.groq.com)
 
-## Quick Start
+### Installation
 
-### 1. Clone the repo
-
+1. **Clone the repository**
 ```bash
 git clone https://github.com/your-username/enterprise-rag.git
 cd enterprise-rag
 ```
 
-### 2. Install dependencies
-
+2. **Install dependencies**
 ```bash
 pip install -e ".[dev]"
 pip install python-multipart sentence-transformers
 ```
 
-### 3. Install and start Ollama
+3. **Get a Groq API key** (required)
+   - Go to https://console.groq.com
+   - Sign up for free
+   - Create an API key
+   - Copy the key (starts with `gsk_`)
+
+4. **Configure environment**
+
+Create a `.env` file or set environment variables:
 
 ```bash
-# Windows (PowerShell)
-irm https://ollama.com/install.ps1 | iex
+# Required
+GROQ_API_KEY=gsk_your_api_key_here
 
-# macOS / Linux
-curl -fsSL https://ollama.com/install.sh | sh
+# Optional
+GROQ_MODEL=llama-3.1-8b-instant  # Default model
+CHROMA_PATH=./chroma_data        # Vector database location
+LOG_DIR=logs                     # Log file directory
 ```
 
-Start Ollama and pull a model:
+5. **Start the application**
 
-```bash
-ollama serve          # keep this running
-ollama pull llama3.2:1b   # lightweight model (~1.3 GB)
-# or for better quality (needs 5+ GB RAM):
-# ollama pull llama3
-```
-
-### 4. Start the server
-
-```bash
+**Windows (PowerShell):**
+```powershell
+$env:GROQ_API_KEY="gsk_your_api_key_here"
 uvicorn enterprise_rag.api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Open **http://localhost:8000** in your browser.
+**Linux/Mac:**
+```bash
+GROQ_API_KEY=gsk_your_api_key_here uvicorn enterprise_rag.api:app --host 0.0.0.0 --port 8000 --reload
+```
+
+6. **Open your browser**
+   - Navigate to http://localhost:8000
+   - You'll see the chat interface!
+
+---
+
+## How to Use
+
+### 1. Upload Your Documents
+
+**Option A: Drag & Drop**
+- Drag files or entire folders into the upload area
+- Supported formats: `.txt`, `.md`, `.rst`, `.html`, `.py`, `.js`, `.ts`, `.java`
+
+**Option B: Click to Browse**
+- Click **"📄 Files"** to select individual files
+- Click **"📁 Folder"** to upload an entire folder
+
+**Option C: Use the API**
+```bash
+curl -X POST http://localhost:8000/upload \
+  -F "files=@document.txt" \
+  -F "files=@guide.md" \
+  -F "permission_tags=public"
+```
+
+### 2. Ask Questions
+
+Simply type your question in the chat box and press Enter:
+
+- "What is the main topic of these documents?"
+- "How do I configure the authentication system?"
+- "Summarize the key points from the uploaded files"
+- "What are the pricing tiers mentioned?"
+
+### 3. Get Answers with Citations
+
+The AI will:
+- ✅ Search through your documents
+- ✅ Find relevant information
+- ✅ Generate a clear answer
+- ✅ Show citations with source excerpts
+- ✅ Display a grounding score (how well the answer is supported)
+
+### 4. Manage Your Documents
+
+**List all uploaded sources:**
+```bash
+python manage_sources.py list
+```
+
+**Delete a specific source:**
+```bash
+python manage_sources.py delete upload-abc123
+```
+
+**Delete all uploaded files:**
+```bash
+python manage_sources.py delete-uploads
+```
+
+**Clear everything:**
+```bash
+python manage_sources.py clear
+```
+
+---
+
+## Advanced Features
+
+### Available AI Models
+
+The system uses Groq API with the following models:
+
+- **llama-3.1-8b-instant** - Ultra-fast responses (1-2 seconds) ⚡ *[Default]*
+- **llama-3.1-70b-versatile** - Higher quality, slightly slower
+- **mixtral-8x7b-32768** - Large context window for longer documents
+
+You can switch models in the UI's "LLM Settings" panel without restarting the server.
+
+### Connect External Sources
+
+Beyond file uploads, you can connect:
+
+**GitHub Repositories:**
+```bash
+GITHUB_REPO=owner/repo \
+GITHUB_TOKEN=ghp_xxxx \
+GROQ_API_KEY=gsk_xxxx \
+uvicorn enterprise_rag.api:app --host 0.0.0.0 --port 8000
+```
+
+**Jira Projects:**
+```bash
+JIRA_URL=https://yourorg.atlassian.net \
+JIRA_USERNAME=you@company.com \
+JIRA_TOKEN=your_api_token \
+JIRA_PROJECT_KEY=ENG \
+GROQ_API_KEY=gsk_xxxx \
+uvicorn enterprise_rag.api:app --host 0.0.0.0 --port 8000
+```
+
+### Conversational Memory
+
+The system remembers your conversation:
+- Ask follow-up questions
+- Reference previous answers
+- Build on context from earlier in the chat
+- Sessions auto-expire after 60 minutes of inactivity
+
+### Grounding Scores
+
+Every answer includes a grounding score (0-100%) showing how well the answer is supported by your documents:
+- **70-100%**: High confidence - well-supported answer
+- **40-69%**: Medium confidence - partially supported
+- **0-39%**: Low confidence - limited support
 
 ---
 
 ## Configuration
 
-All settings are via environment variables — no code changes needed.
+All settings use environment variables:
 
-| Variable | Default | Description |
-|---|---|---|
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint |
-| `OLLAMA_MODEL` | `llama3.2:1b` | Model name |
-| `CHROMA_PATH` | `./chroma_data` | ChromaDB storage path |
-| `LOG_BACKEND` | `file` | Logging backend (`file`, `elasticsearch`, `s3`) |
-| `LOG_DIR` | `logs` | Log file directory |
-| `GITHUB_REPO` | — | GitHub repo to ingest (`owner/repo`) |
-| `GITHUB_TOKEN` | — | GitHub personal access token |
-| `GITHUB_SOURCE_ID` | `github` | Source identifier |
-| `GITHUB_PERMISSION_TAGS` | `engineering` | Comma-separated permission tags |
-| `DOCS_PATH` | — | Local docs folder to ingest |
-| `JIRA_URL` | — | Jira base URL |
-| `JIRA_TOKEN` | — | Jira API token |
-| `JIRA_USERNAME` | — | Jira username/email |
-| `JIRA_PROJECT_KEY` | — | Jira project key |
-| `NEO4J_URI` | `bolt://localhost:7687` | Neo4j connection URI |
-| `NEO4J_USER` | `neo4j` | Neo4j username |
-| `NEO4J_PASSWORD` | — | Neo4j password |
-
-Example with GitHub ingestion:
+### Required Configuration
 
 ```bash
-GITHUB_REPO=myorg/myrepo \
-GITHUB_TOKEN=ghp_xxxx \
-OLLAMA_MODEL=llama3.2:1b \
-uvicorn enterprise_rag.api:app --host 0.0.0.0 --port 8000
+# Groq API (required)
+GROQ_API_KEY=gsk_your_api_key_here
+```
+
+### Optional Configuration
+
+```bash
+# LLM Settings
+GROQ_MODEL=llama-3.1-8b-instant  # Default: llama-3.1-8b-instant
+
+# Storage
+CHROMA_PATH=./chroma_data  # Vector database location
+LOG_DIR=logs               # Log file directory
+
+# Chunking Configuration
+CHUNK_SIZE=1024      # Chunk size in tokens (default: 1024)
+CHUNK_OVERLAP=128    # Overlap between chunks in tokens (default: 128)
+```
+
+Larger chunk sizes provide more context to the LLM but use more memory and may reduce retrieval precision. Recommended values:
+- Small documents (< 1000 words): 512 tokens, 64 overlap
+- Medium documents: 1024 tokens, 128 overlap (default)
+- Large documents: 2048 tokens, 256 overlap
+
+### Data Sources
+
+```bash
+# GitHub
+GITHUB_REPO=owner/repo
+GITHUB_TOKEN=ghp_xxxx
+GITHUB_PERMISSION_TAGS=engineering,public
+
+# Jira
+JIRA_URL=https://yourorg.atlassian.net
+JIRA_USERNAME=you@company.com
+JIRA_TOKEN=your_api_token
+JIRA_PROJECT_KEY=ENG
+JIRA_PERMISSION_TAGS=engineering,internal
+
+# Local Docs
+DOCS_PATH=/path/to/docs
+DOCS_PERMISSION_TAGS=public
 ```
 
 ---
 
-## API Endpoints
+## API Reference
+
+The system provides a REST API for programmatic access:
+
+### Core Endpoints
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/` | Web UI |
-| `POST` | `/query` | Ask a question |
-| `POST` | `/upload` | Upload a file for ingestion |
-| `POST` | `/ingest` | Trigger source ingestion |
-| `GET` | `/health` | Component health check |
-| `GET` | `/sources` | List registered connectors |
-| `DELETE` | `/session/{id}` | Clear a conversation session |
-| `GET` | `/docs` | Interactive API docs (Swagger UI) |
+| `POST` | `/query` | Ask a question and get an answer |
+| `POST` | `/upload` | Upload files or folders |
+| `GET` | `/health` | System health check |
+| `DELETE` | `/session/{id}` | Clear conversation history |
 
-### POST /query
+### Source Management
 
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/sources/list` | List all uploaded sources |
+| `DELETE` | `/sources/{source_id}` | Delete a specific source |
+
+### Example: Ask a Question
+
+```bash
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "my-session",
+    "query": "What is the refund policy?"
+  }'
+```
+
+Response:
 ```json
-// Request
 {
-  "session_id": "my-session",
-  "query": "What does the authenticate_user function do?"
-}
-
-// Headers
-Authorization: Bearer alice:engineering
-
-// Response
-{
-  "answer": "The authenticate_user function validates credentials [1] and returns a JWT token [2].",
+  "answer": "The refund policy allows returns within 30 days [1]...",
   "citations": [
     {
       "number": 1,
-      "source_type": "github",
-      "document_title": "auth.py",
-      "document_url": "https://github.com/org/repo/blob/HEAD/auth.py",
-      "excerpt": "def authenticate_user(username, password): ..."
+      "source_type": "docs",
+      "document_title": "refund-policy.pdf",
+      "document_url": "uploads/refund-policy.pdf",
+      "excerpt": "Customers may return items within 30 days..."
     }
   ],
   "grounding_score": 0.95,
@@ -180,33 +322,175 @@ Authorization: Bearer alice:engineering
 }
 ```
 
-### POST /upload
+### Example: Upload Files
 
+```bash
+curl -X POST http://localhost:8000/upload \
+  -F "files=@document.txt" \
+  -F "files=@guide.md" \
+  -F "permission_tags=public"
 ```
-POST /upload
-Content-Type: multipart/form-data
 
-file: <file>
-permission_tags: engineering,internal
+Response:
+```json
+{
+  "job_id": "uuid",
+  "files": [
+    {
+      "filename": "document.txt",
+      "size_bytes": 1024,
+      "source_id": "upload-abc123"
+    }
+  ],
+  "total_files": 1,
+  "total_bytes": 1024
+}
 ```
 
-Supported formats: `.txt`, `.md`, `.rst`, `.html`, `.py`, `.js`, `.ts`, `.java`
+### Example: List Sources
+
+```bash
+curl http://localhost:8000/sources/list
+```
+
+Response:
+```json
+{
+  "sources": [
+    {
+      "source_id": "upload-abc123",
+      "source_type": "docs",
+      "count": 5
+    }
+  ],
+  "total_documents": 5
+}
+```
+
+### Example: Delete a Source
+
+```bash
+curl -X DELETE http://localhost:8000/sources/upload-abc123
+```
+
+For complete API documentation, visit http://localhost:8000/docs (Swagger UI) when the server is running.
 
 ---
 
-## Authentication
+## Use Cases
 
-The system uses Bearer token authentication. Token format:
+### 📚 Document Q&A
+Upload your documentation, manuals, or knowledge base and ask questions:
+- "What are the system requirements?"
+- "How do I troubleshoot error X?"
+- "Summarize the installation process"
 
+### 💼 Business Intelligence
+Upload reports, policies, and procedures:
+- "What is our vacation policy?"
+- "What were the Q3 sales figures?"
+- "Summarize the compliance requirements"
+
+### 💻 Code Understanding
+Upload your codebase and ask about it:
+- "How does the authentication system work?"
+- "What does the process_payment function do?"
+- "Find all API endpoints related to users"
+
+### 📖 Research Assistant
+Upload research papers, articles, or notes:
+- "What are the main findings?"
+- "Compare the methodologies used"
+- "What are the limitations mentioned?"
+
+### 🎓 Study Helper
+Upload textbooks, lecture notes, or study materials:
+- "Explain the concept of X"
+- "What are the key differences between Y and Z?"
+- "Create a summary of chapter 5"
+
+---
+
+## How It Works
+
+1. **Upload**: Documents are split into chunks and converted to embeddings (vector representations)
+2. **Store**: Embeddings are stored in ChromaDB (a vector database)
+3. **Query**: Your question is converted to an embedding
+4. **Search**: The system finds the most relevant document chunks using hybrid search (semantic + keyword)
+5. **Generate**: Groq API generates an answer using only the retrieved chunks
+6. **Cite**: Citations are automatically added showing which documents were used
+
+### Why RAG?
+
+Traditional chatbots can "hallucinate" (make up information). RAG solves this by:
+- ✅ Only using your actual documents
+- ✅ Providing citations for verification
+- ✅ Showing confidence scores
+- ✅ Allowing you to trace answers back to sources
+
+---
+
+## Troubleshooting
+
+### "Groq API key not configured" Error
+
+**Solution**: Set your Groq API key:
+```bash
+# Windows PowerShell
+$env:GROQ_API_KEY="gsk_your_api_key_here"
+
+# Linux/Mac
+export GROQ_API_KEY=gsk_your_api_key_here
 ```
-Authorization: Bearer <username>:<role1>,<role2>
+
+Or add it to your `.env` file:
+```
+GROQ_API_KEY=gsk_your_api_key_here
 ```
 
-Examples:
-- `Bearer alice:engineering` — user alice with engineering role
-- `Bearer bob:hr,finance` — user bob with hr and finance roles
+### "Groq API unavailable" Error
 
-Roles control which documents are retrievable. Without pre-configured roles, the system defaults to allowing access to all content.
+**Solutions**:
+1. Check your internet connection
+2. Verify your API key is valid at https://console.groq.com
+3. Check Groq API status at https://status.groq.com
+
+### "Rate limit exceeded" Error
+
+**What it means**: Groq API has rate limits to prevent abuse. The free tier typically allows:
+- ~30 requests per minute
+- ~14,400 requests per day
+
+**Solutions**:
+1. **Wait a few seconds** between questions (recommended: 2-3 seconds)
+2. **Upgrade your Groq plan** at https://console.groq.com for higher limits:
+   - Pay-as-you-go: Higher rate limits
+   - Enterprise: Custom rate limits
+3. **Use a different API key** if you have multiple accounts
+4. **Batch your questions** instead of asking many rapid-fire queries
+
+**Note**: The system will automatically show a clear error message when you hit the rate limit. Simply wait a moment and try again.
+
+### Slow Responses
+
+Groq API typically responds in 1-2 seconds. If responses are slow:
+1. Check your internet connection speed
+2. Try switching to a faster model (llama-3.1-8b-instant)
+3. Reduce the number of documents uploaded
+
+### Files Not Being Found in Queries
+
+**Solutions**:
+1. Wait a few seconds after upload for indexing to complete
+2. Check files were uploaded: `python manage_sources.py list`
+3. Ask more specific questions mentioning file names or topics
+4. Clear your session and try again
+
+### "No valid files uploaded" Error
+
+**Solution**: Check that your files have supported extensions:
+- Supported: `.txt`, `.md`, `.rst`, `.html`, `.py`, `.js`, `.ts`, `.java`
+- Not supported: `.docx`, `.xlsx`, `.pptx` (convert to `.txt` or `.md` first)
 
 ---
 
@@ -215,105 +499,88 @@ Roles control which documents are retrievable. Without pre-configured roles, the
 ```
 enterprise-rag/
 ├── src/enterprise_rag/
-│   ├── api.py                  # FastAPI application
-│   ├── models.py               # Data models (dataclasses)
-│   ├── vector_store.py         # ChromaDB vector store
-│   ├── graph_store.py          # Neo4j graph store
-│   ├── retriever.py            # Hybrid search + RRF
-│   ├── generator.py            # Ollama LLM wrapper
-│   ├── citation_engine.py      # Citation mapping + grounding score
-│   ├── access_controller.py    # RBAC
+│   ├── api.py                  # FastAPI application & endpoints
+│   ├── models.py               # Data models
+│   ├── vector_store.py         # ChromaDB integration
+│   ├── retriever.py            # Hybrid search engine
+│   ├── groq_generator.py       # Groq API wrapper
+│   ├── query_rewriter.py       # Query expansion with Groq
+│   ├── citation_engine.py      # Citation extraction
 │   ├── conversation_manager.py # Session management
-│   ├── query_rewriter.py       # Query expansion
-│   ├── ast_parser.py           # AST-based code parsing
-│   ├── logging.py              # Structured logging
-│   ├── ingestion/
-│   │   ├── pipeline.py         # Ingestion orchestrator
-│   │   ├── docs_connector.py   # File/URL connector
-│   │   ├── github_connector.py # GitHub API connector
-│   │   └── jira_connector.py   # Jira REST API connector
+│   ├── ingestion/              # Document processing
+│   │   ├── pipeline.py
+│   │   ├── docs_connector.py
+│   │   ├── github_connector.py
+│   │   └── jira_connector.py
 │   └── static/
 │       └── index.html          # Web UI
-├── tests/
-│   ├── unit/                   # Unit + property-based tests
-│   ├── integration/            # API integration tests
-│   └── smoke/                  # Smoke tests
-├── pyproject.toml
-└── README.md
+├── tests/                      # Test suite
+├── manage_sources.py           # Source management CLI
+├── README.md                   # This file
+└── .env.example               # Example environment configuration
 ```
 
 ---
 
-## Running Tests
-
-```bash
-# All tests
-pytest tests/
-
-# Unit tests only
-pytest tests/unit/
-
-# Integration tests
-pytest tests/integration/
-
-# With coverage
-pytest tests/ --cov=enterprise_rag
-```
-
----
-
-## Ingesting Content
-
-### Upload a file (UI)
-
-1. Open http://localhost:8000
-2. Drag a file into the left sidebar upload area
-3. Wait for "✓ indexed!" confirmation
-4. Ask questions about it
-
-### Connect a GitHub repo
-
-Set env vars and restart, or use the sidebar form in the UI:
-
-```bash
-GITHUB_REPO=owner/repo GITHUB_TOKEN=ghp_xxx uvicorn enterprise_rag.api:app ...
-```
-
-Then trigger ingestion:
-
-```bash
-curl -X POST http://localhost:8000/ingest \
-  -H "Content-Type: application/json" \
-  -d '{"source_id": "github", "full": true}'
-```
-
-### Connect Jira
-
-```bash
-JIRA_URL=https://yourorg.atlassian.net \
-JIRA_USERNAME=you@company.com \
-JIRA_TOKEN=your_api_token \
-JIRA_PROJECT_KEY=ENG \
-uvicorn enterprise_rag.api:app ...
-```
-
----
-
-## Tech Stack
+## Technology Stack
 
 | Component | Technology |
 |---|---|
-| API framework | FastAPI + Uvicorn |
-| Vector store | ChromaDB |
-| Graph store | Neo4j |
-| LLM inference | Ollama |
-| Embeddings | sentence-transformers (`all-MiniLM-L6-v2`) |
-| Session store | In-memory (Redis + Postgres optional) |
-| Code parsing | Python `ast` + tree-sitter |
-| Testing | pytest + Hypothesis (property-based) |
+| **Backend** | FastAPI + Python 3.11+ |
+| **Vector Database** | ChromaDB |
+| **AI Models** | Groq API (llama-3.1, mixtral) |
+| **Embeddings** | sentence-transformers (all-MiniLM-L6-v2) |
+| **Search** | Hybrid (semantic + BM25 keyword) |
+| **Frontend** | Vanilla JavaScript + HTML/CSS |
+| **Testing** | pytest + Hypothesis (property-based) |
+
+---
+
+## Performance
+
+With Groq API:
+- **Query Response Time**: 1-2 seconds (end-to-end)
+- **Upload Processing**: ~100 documents/second
+- **Concurrent Users**: Supports multiple simultaneous queries
+- **Context Window**: Up to 32K tokens (mixtral model)
+
+### Rate Limits
+
+Groq API enforces rate limits based on your plan:
+
+**Free Tier**:
+- ~30 requests per minute
+- ~14,400 requests per day
+- Sufficient for testing and small projects
+
+**Paid Tiers**:
+- Higher rate limits (varies by plan)
+- Better for production use
+- See https://console.groq.com/settings/limits for your current limits
+
+**Best Practices**:
+- Add a 2-3 second delay between questions for smooth operation
+- Monitor your usage at https://console.groq.com
+- Consider upgrading if you frequently hit rate limits
+- The system automatically handles rate limit errors with clear messages
+
+---
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ---
 
 ## License
 
 MIT
+
+---
+
+## Acknowledgments
+
+- Powered by [Groq](https://groq.com) for ultra-fast LLM inference
+- Built with [FastAPI](https://fastapi.tiangolo.com)
+- Vector storage by [ChromaDB](https://www.trychroma.com)
+- Embeddings by [sentence-transformers](https://www.sbert.net)

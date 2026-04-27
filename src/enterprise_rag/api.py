@@ -19,15 +19,15 @@ import uuid
 from datetime import datetime, timezone
 from typing import AsyncIterator, Dict, List, Optional
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
+from dotenv import load_dotenv
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from enterprise_rag.access_controller import AccessController
 from enterprise_rag.citation_engine import CitationEngine
 from enterprise_rag.conversation_manager import ConversationManager
-from enterprise_rag.generator import Generator
+from enterprise_rag.groq_generator import GroqGenerator
 from enterprise_rag.ingestion.pipeline import IngestionPipeline
 from enterprise_rag.logging import StructuredLogger
 from enterprise_rag.models import (
@@ -38,8 +38,10 @@ from enterprise_rag.models import (
     Role,
     Turn,
 )
-from enterprise_rag.query_rewriter import QueryRewriter
 from enterprise_rag.retriever import Retriever
+
+# Load environment variables from .env file
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -57,24 +59,20 @@ async def root():
 # Component singletons (created once at startup via environment config)
 # ---------------------------------------------------------------------------
 
-def _make_access_controller() -> AccessController:
-    return AccessController()
-
-
 def _make_conversation_manager() -> ConversationManager:
     return ConversationManager()
 
 
-def _make_query_rewriter() -> QueryRewriter:
-    ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-    model = os.environ.get("OLLAMA_MODEL", "llama3.2:1b")
-    return QueryRewriter(ollama_url=ollama_url, model=model, timeout=30.0)
-
-
-def _make_generator() -> Generator:
-    ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-    model = os.environ.get("OLLAMA_MODEL", "llama3.2:1b")
-    return Generator(ollama_url=ollama_url, model=model, context_window=2048)
+def _make_generator() -> GroqGenerator:
+    """Create GroqGenerator instance from environment variables."""
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        # Return a generator with empty key - health check will detect this
+        logger.warning("GROQ_API_KEY not configured")
+        return GroqGenerator(api_key="", model="llama-3.1-8b-instant", context_window=4096)
+    model = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+    logger.info("Using Groq API with model: %s", model)
+    return GroqGenerator(api_key=api_key, model=model, context_window=4096)
 
 
 def _make_embed_fn():
@@ -110,21 +108,12 @@ def _make_structured_logger() -> StructuredLogger:
 
 
 # Module-level singletons (lazy-initialised on first request)
-_access_controller: Optional[AccessController] = None
 _conversation_manager: Optional[ConversationManager] = None
-_query_rewriter: Optional[QueryRewriter] = None
-_generator: Optional[Generator] = None
+_generator: Optional[GroqGenerator] = None
 _retriever: Optional[Retriever] = None
 _citation_engine: Optional[CitationEngine] = None
 _structured_logger: Optional[StructuredLogger] = None
 _ingestion_pipeline: Optional[IngestionPipeline] = None
-
-
-def get_access_controller() -> AccessController:
-    global _access_controller
-    if _access_controller is None:
-        _access_controller = _make_access_controller()
-    return _access_controller
 
 
 def get_conversation_manager() -> ConversationManager:
@@ -134,15 +123,9 @@ def get_conversation_manager() -> ConversationManager:
     return _conversation_manager
 
 
-def get_query_rewriter() -> QueryRewriter:
-    global _query_rewriter
-    if _query_rewriter is None:
-        _query_rewriter = _make_query_rewriter()
-    return _query_rewriter
-
-
-def get_generator() -> Generator:
+def get_generator() -> GroqGenerator:
     global _generator
+    # Always recreate generator if it was reset (set to None)
     if _generator is None:
         _generator = _make_generator()
     return _generator
@@ -313,18 +296,25 @@ class IngestResponse(BaseModel):
     job_id: str
 
 
-# ---------------------------------------------------------------------------
-# Helper: extract Bearer token
-# ---------------------------------------------------------------------------
+class DeleteSourceRequest(BaseModel):
+    source_id: str
 
-def _extract_token(authorization: Optional[str]) -> str:
-    """Extract the Bearer token from the Authorization header value."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(status_code=401, detail="Invalid Authorization header format")
-    return parts[1]
+
+class DeleteSourceResponse(BaseModel):
+    source_id: str
+    chunks_deleted: int
+    message: str
+
+
+class SourceInfo(BaseModel):
+    source_id: str
+    source_type: str
+    count: int
+
+
+class ListSourcesResponse(BaseModel):
+    sources: List[SourceInfo]
+    total_documents: int
 
 
 # ---------------------------------------------------------------------------
@@ -334,49 +324,42 @@ def _extract_token(authorization: Optional[str]) -> str:
 @app.post("/query")
 async def query_endpoint(
     request: QueryRequest,
-    authorization: Optional[str] = Header(default=None),
-    ac: AccessController = Depends(get_access_controller),
     cm: ConversationManager = Depends(get_conversation_manager),
-    qr: QueryRewriter = Depends(get_query_rewriter),
-    gen: Generator = Depends(get_generator),
+    gen: GroqGenerator = Depends(get_generator),
     ret: Retriever = Depends(get_retriever),
     ce: CitationEngine = Depends(get_citation_engine),
     sl: StructuredLogger = Depends(get_structured_logger),
 ) -> Response:
     """RAG query endpoint.
 
-    Validates the Bearer token, resolves roles, retrieves relevant chunks,
-    generates a grounded answer, and returns either an SSE stream or JSON.
+    Retrieves relevant chunks, generates a grounded answer, and returns either an SSE stream or JSON.
     """
     start_time = time.monotonic()
     correlation_id = sl.new_correlation_id()
 
-    # --- Authentication (Req 2.4) ---
-    token = _extract_token(authorization)
-    if not ac.validate_token(token):
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    roles: List[Role] = ac.resolve_roles(token)
-    # If no roles resolved, build a permissive filter that allows all content.
-    # This lets the system work without pre-configured roles in the cache.
-    if not roles:
-        access_filter: AccessFilter = AccessFilter(
-            permitted_source_ids=[],
-            permitted_tags=["engineering", "public", "internal", "docs", "github", "jira"],
-        )
-    else:
-        access_filter: AccessFilter = ac.build_access_filter(roles)
+    # --- Build permissive access filter - Allow all access ---
+    access_filter: AccessFilter = AccessFilter(
+        permitted_source_ids=[],
+        permitted_tags=["engineering", "public", "internal", "docs", "github", "jira", "all"],
+    )
+    roles: List[Role] = []  # Empty roles list for logging
 
     # --- Conversation history ---
     history = cm.get_history(request.session_id, last=10)
 
-    # --- Query rewriting ---
-    variants = qr.rewrite(request.query, history)
+    # --- Query rewriting DISABLED - Use original query directly ---
+    variants = [request.query]  # No query expansion, just use the original query
 
     # --- Retrieval ---
     try:
+        with open("debug.log", "a") as f:
+            f.write(f"[{datetime.now()}] About to retrieve chunks for session {request.session_id}\n")
         chunks = ret.retrieve(variants, access_filter)
+        with open("debug.log", "a") as f:
+            f.write(f"[{datetime.now()}] Retrieved {len(chunks)} chunks\n")
     except ConnectionError as exc:
+        with open("debug.log", "a") as f:
+            f.write(f"[{datetime.now()}] Retriever ConnectionError: {exc}\n")
         sl.log_error(
             severity="ERROR",
             component_name="retriever",
@@ -389,23 +372,40 @@ async def query_endpoint(
 
     # --- Generation ---
     try:
+        with open("debug.log", "a") as f:
+            f.write(f"[{datetime.now()}] About to call Groq API\n")
         answer_result = gen.generate(request.query, chunks, history, stream=False)
+        with open("debug.log", "a") as f:
+            f.write(f"[{datetime.now()}] Groq API call successful\n")
+        logger.info("Groq API call successful")
     except ConnectionError as exc:
+        with open("debug.log", "a") as f:
+            f.write(f"[{datetime.now()}] Groq ConnectionError: {exc}\n")
+        logger.error(f"Groq ConnectionError: {exc}")
         sl.log_error(
             severity="ERROR",
             component_name="generator",
             error_message=str(exc),
             correlation_id=correlation_id,
         )
-        raise HTTPException(status_code=503, detail="Ollama service unavailable")
+        # Check if it's a rate limit error
+        error_msg = str(exc)
+        if "rate limit" in error_msg.lower():
+            raise HTTPException(status_code=429, detail="Groq API rate limit exceeded. Please wait a moment and try again.")
+        else:
+            raise HTTPException(status_code=503, detail=f"Groq API error: {error_msg}")
     except TimeoutError as exc:
+        with open("debug.log", "a") as f:
+            f.write(f"[{datetime.now()}] Groq TimeoutError: {exc}\n")
+        print(f"[DEBUG] Groq TimeoutError: {exc}")
+        logger.error(f"Groq TimeoutError: {exc}")
         sl.log_error(
             severity="ERROR",
             component_name="generator",
             error_message=str(exc),
             correlation_id=correlation_id,
         )
-        raise HTTPException(status_code=504, detail="Generator timed out")
+        raise HTTPException(status_code=504, detail="Groq API timed out")
 
     # Determine if we got a streaming iterator or a plain string
     is_streaming = hasattr(answer_result, "__iter__") and not isinstance(answer_result, str)
@@ -518,11 +518,12 @@ async def sources_endpoint(
 @app.get("/health", response_model=HealthResponse)
 async def health_endpoint(
     ret: Retriever = Depends(get_retriever),
+    gen: GroqGenerator = Depends(get_generator),
     sl: StructuredLogger = Depends(get_structured_logger),
 ) -> HealthResponse:
     """Return health status for all system components.
 
-    Checks: ollama, chromadb, session_store, and source connectors.
+    Checks: chromadb, groq, and session_store.
     Requirements: 10.3
     """
     components: List[HealthComponentOut] = []
@@ -545,21 +546,25 @@ async def health_endpoint(
             detail=str(exc),
         ))
 
-    # Ollama — attempt a lightweight connectivity check
-    ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+    # Groq API - lightweight check (just verify API key is configured)
     try:
-        import requests as _requests
-        resp = _requests.get(f"{ollama_url}/api/tags", timeout=5)
-        ollama_ok = resp.status_code == 200
-        components.append(HealthComponentOut(
-            name="ollama",
-            status="ok" if ollama_ok else "degraded",
-            last_checked=now_str,
-            detail=None if ollama_ok else f"HTTP {resp.status_code}",
-        ))
+        if gen.api_key and gen.api_key.startswith("gsk_"):
+            components.append(HealthComponentOut(
+                name="groq",
+                status="ok",
+                last_checked=now_str,
+                detail=f"Model: {gen.model}",
+            ))
+        else:
+            components.append(HealthComponentOut(
+                name="groq",
+                status="down",
+                last_checked=now_str,
+                detail="API key not configured",
+            ))
     except Exception as exc:
         components.append(HealthComponentOut(
-            name="ollama",
+            name="groq",
             status="down",
             last_checked=now_str,
             detail=str(exc),
@@ -651,8 +656,25 @@ def _run_upload_ingestion(file_path: str, source_id: str, permission_tags: list)
             for c, v in zip(chunks, vecs)
         ]
 
-    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-        content = f.read()
+    # Detect encoding and read file content
+    content = None
+    encodings_to_try = ['utf-8', 'utf-16', 'utf-16-le', 'utf-16-be', 'latin-1', 'cp1252']
+    
+    for encoding in encodings_to_try:
+        try:
+            with open(file_path, "r", encoding=encoding) as f:
+                content = f.read()
+            # Successfully read the file
+            logger.info(f"Successfully read {file_path} with encoding: {encoding}")
+            break
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    
+    if content is None:
+        # Fallback: read as binary and decode with errors='replace'
+        with open(file_path, "rb") as f:
+            content = f.read().decode('utf-8', errors='replace')
+        logger.warning(f"Used fallback decoding for {file_path}")
 
     doc = Document(
         doc_id=str(uuid.uuid4()),
@@ -680,36 +702,56 @@ def _run_upload_ingestion(file_path: str, source_id: str, permission_tags: list)
 @app.post("/upload")
 async def upload_endpoint(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     permission_tags: str = "engineering",
 ) -> dict:
-    """Upload a file and immediately ingest it into the vector store.
+    """Upload one or more files and immediately ingest them into the vector store.
 
     Accepts: .txt, .md, .rst, .html, .pdf, .py, .js, .ts, .java
-    Returns: { job_id, filename, size_bytes }
+    Returns: { job_id, files: [{filename, size_bytes, source_id}], total_files, total_bytes }
     """
-    ext = os.path.splitext(file.filename or "")[1].lower()
-    if ext not in _ALLOWED_EXTENSIONS:
+    os.makedirs(_UPLOAD_DIR, exist_ok=True)
+    tags = [t.strip() for t in permission_tags.split(",") if t.strip()]
+    job_id = str(uuid.uuid4())
+    
+    uploaded_files = []
+    total_bytes = 0
+    
+    for file in files:
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        if ext not in _ALLOWED_EXTENSIONS:
+            logger.warning(f"Skipping unsupported file type: {file.filename}")
+            continue
+        
+        safe_name = f"{uuid.uuid4().hex}_{os.path.basename(file.filename or 'upload')}"
+        dest = os.path.join(_UPLOAD_DIR, safe_name)
+        
+        content = await file.read()
+        with open(dest, "wb") as f:
+            f.write(content)
+        
+        source_id = f"upload-{safe_name[:8]}"
+        background_tasks.add_task(_run_upload_ingestion, dest, source_id, tags)
+        
+        uploaded_files.append({
+            "filename": file.filename,
+            "size_bytes": len(content),
+            "source_id": source_id,
+        })
+        total_bytes += len(content)
+    
+    if not uploaded_files:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '{ext}'. Allowed: {sorted(_ALLOWED_EXTENSIONS)}",
+            detail=f"No valid files uploaded. Allowed types: {sorted(_ALLOWED_EXTENSIONS)}",
         )
-
-    os.makedirs(_UPLOAD_DIR, exist_ok=True)
-    safe_name = f"{uuid.uuid4().hex}_{os.path.basename(file.filename or 'upload')}"
-    dest = os.path.join(_UPLOAD_DIR, safe_name)
-
-    content = await file.read()
-    with open(dest, "wb") as f:
-        f.write(content)
-
-    tags = [t.strip() for t in permission_tags.split(",") if t.strip()]
-    source_id = f"upload-{safe_name[:8]}"
-    job_id = str(uuid.uuid4())
-
-    background_tasks.add_task(_run_upload_ingestion, dest, source_id, tags)
-
-    return {"job_id": job_id, "filename": file.filename, "size_bytes": len(content)}
+    
+    return {
+        "job_id": job_id,
+        "files": uploaded_files,
+        "total_files": len(uploaded_files),
+        "total_bytes": total_bytes,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -727,6 +769,58 @@ async def delete_session_endpoint(
     """
     cm.clear_session(session_id)
     return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# GET /sources/list - List all sources in vector store
+# ---------------------------------------------------------------------------
+
+@app.get("/sources/list", response_model=ListSourcesResponse)
+async def list_sources_endpoint(
+    ret: Retriever = Depends(get_retriever),
+) -> ListSourcesResponse:
+    """List all sources in the vector store with document counts."""
+    sources = ret._vector_store.list_sources()
+    total = sum(s["count"] for s in sources)
+    
+    return ListSourcesResponse(
+        sources=[SourceInfo(**s) for s in sources],
+        total_documents=total,
+    )
+
+
+# ---------------------------------------------------------------------------
+# DELETE /sources/{source_id} - Delete all documents from a source
+# ---------------------------------------------------------------------------
+
+@app.delete("/sources/{source_id}", response_model=DeleteSourceResponse)
+async def delete_source_endpoint(
+    source_id: str,
+    ret: Retriever = Depends(get_retriever),
+) -> DeleteSourceResponse:
+    """Delete all documents from a specific source."""
+    try:
+        chunks_deleted = ret._vector_store.delete_by_source_id(source_id)
+        
+        if chunks_deleted == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No documents found for source_id: {source_id}"
+            )
+        
+        return DeleteSourceResponse(
+            source_id=source_id,
+            chunks_deleted=chunks_deleted,
+            message=f"Successfully deleted {chunks_deleted} documents from source '{source_id}'",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to delete source %s: %s", source_id, exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete source: {str(exc)}"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,0 @@
-# file: C:\Users\shubh\Enterprise_Knowledge_Assistant\src\enterprise_rag\retriever.py
-# hypothesis_version: 6.151.10
-
-[0.0, 0.5, 0.7, 1.0, 384, '->', '.js', '.py', '::', '\\w+', 'both', 'calls', 'class', 'def ', 'function', 'import', 'inherits', 'method', 'module']

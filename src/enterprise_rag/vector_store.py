@@ -144,6 +144,58 @@ class VectorStore:
             metadata=metadatas[0],
         )
 
+    def delete_by_source_id(self, source_id: str) -> int:
+        """Delete all chunks with the given source_id.
+        
+        Returns the number of chunks deleted.
+        """
+        try:
+            # Get all chunks with this source_id
+            results = self._collection.get(
+                where={"source_id": {"$eq": source_id}},
+                include=["metadatas"],
+            )
+            
+            chunk_ids = results.get("ids", [])
+            if not chunk_ids:
+                logger.info("No chunks found for source_id: %s", source_id)
+                return 0
+            
+            # Delete the chunks
+            self._collection.delete(ids=chunk_ids)
+            logger.info("Deleted %d chunks for source_id: %s", len(chunk_ids), source_id)
+            return len(chunk_ids)
+            
+        except Exception as exc:
+            logger.error("Failed to delete chunks for source_id %s: %s", source_id, exc)
+            raise
+
+    def list_sources(self) -> List[dict]:
+        """List all unique source_ids with their document counts."""
+        try:
+            # Get all documents
+            results = self._collection.get(include=["metadatas"])
+            metadatas = results.get("metadatas", [])
+            
+            # Count by source_id
+            source_counts = {}
+            for meta in metadatas:
+                source_id = meta.get("source_id", "unknown")
+                source_type = meta.get("source_type", "unknown")
+                if source_id not in source_counts:
+                    source_counts[source_id] = {
+                        "source_id": source_id,
+                        "source_type": source_type,
+                        "count": 0
+                    }
+                source_counts[source_id]["count"] += 1
+            
+            return list(source_counts.values())
+            
+        except Exception as exc:
+            logger.error("Failed to list sources: %s", exc)
+            return []
+
     def health_check(self) -> ComponentStatus:
         """Return the health status of the ChromaDB connection."""
         now = datetime.now(tz=timezone.utc)

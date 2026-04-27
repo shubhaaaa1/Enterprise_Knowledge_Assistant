@@ -34,17 +34,26 @@ def _make_turn(index: int, role: str = "user") -> Turn:
     )
 
 
-def _mock_ollama_response(text: str) -> MagicMock:
+def _mock_groq_response(text: str) -> MagicMock:
+    """Mock Groq API response in OpenAI-compatible format."""
     resp = MagicMock()
-    resp.json.return_value = {"response": text}
+    resp.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": text
+                }
+            }
+        ]
+    }
     resp.raise_for_status.return_value = None
     return resp
 
 
 def _make_rewriter(**kwargs) -> QueryRewriter:
     return QueryRewriter(
-        ollama_url="http://mock-ollama:11434",
-        model="llama3",
+        api_key="test-api-key",
+        model="llama-3.1-8b-instant",
         **kwargs,
     )
 
@@ -55,7 +64,7 @@ def _make_rewriter(**kwargs) -> QueryRewriter:
 
 class TestTimeoutFallback:
     def test_timeout_returns_original_query(self):
-        """When Ollama times out, rewrite() must return [original_query]."""
+        """When Groq API times out, rewrite() must return [original_query]."""
         rewriter = _make_rewriter(timeout=5.0)
         query = "what is the deployment process?"
 
@@ -80,8 +89,8 @@ class TestTimeoutFallback:
             "Expected a WARNING-level log entry"
         )
 
-    def test_timeout_log_contains_session_id_unknown(self, caplog):
-        """Timeout log must include session_id=unknown as per Req 3.4."""
+    def test_timeout_log_contains_query_text(self, caplog):
+        """Timeout log must include the query text as per Req 3.4."""
         rewriter = _make_rewriter()
         query = "show me the architecture diagram"
 
@@ -89,8 +98,8 @@ class TestTimeoutFallback:
             with patch("requests.post", side_effect=requests.Timeout("timed out")):
                 rewriter.rewrite(query, history=[])
 
-        assert any("unknown" in record.message for record in caplog.records), (
-            "Expected 'unknown' session_id in timeout log"
+        assert any(query in record.message for record in caplog.records), (
+            "Expected query text in timeout log"
         )
 
     def test_timeout_result_is_list_with_one_element(self):
@@ -111,12 +120,12 @@ class TestTimeoutFallback:
 
 class TestSuccessfulRewrite:
     def test_returns_original_plus_variants(self):
-        """Successful Ollama response: original query prepended to variants."""
+        """Successful Groq response: original query prepended to variants."""
         rewriter = _make_rewriter()
         query = "how does authentication work?"
-        ollama_text = "how is auth implemented?\nhow does login work?\nwhat is the auth flow?"
+        groq_text = "how is auth implemented?\nhow does login work?\nwhat is the auth flow?"
 
-        with patch("requests.post", return_value=_mock_ollama_response(ollama_text)):
+        with patch("requests.post", return_value=_mock_groq_response(groq_text)):
             result = rewriter.rewrite(query, history=[], max_variants=3)
 
         assert result[0] == query, "First element must be the original query"
@@ -129,21 +138,21 @@ class TestSuccessfulRewrite:
         """Returned variants must not exceed max_variants (plus original)."""
         rewriter = _make_rewriter()
         query = "explain the ingestion pipeline"
-        # Ollama returns 5 lines but max_variants=2
-        ollama_text = "line1\nline2\nline3\nline4\nline5"
+        # Groq returns 5 lines but max_variants=2
+        groq_text = "line1\nline2\nline3\nline4\nline5"
 
-        with patch("requests.post", return_value=_mock_ollama_response(ollama_text)):
+        with patch("requests.post", return_value=_mock_groq_response(groq_text)):
             result = rewriter.rewrite(query, history=[], max_variants=2)
 
         # original + up to 2 variants
         assert len(result) <= 3
 
-    def test_empty_ollama_response_returns_original_only(self):
-        """If Ollama returns empty text, result is just [original_query]."""
+    def test_empty_groq_response_returns_original_only(self):
+        """If Groq returns empty text, result is just [original_query]."""
         rewriter = _make_rewriter()
         query = "what is the SLA?"
 
-        with patch("requests.post", return_value=_mock_ollama_response("")):
+        with patch("requests.post", return_value=_mock_groq_response("")):
             result = rewriter.rewrite(query, history=[])
 
         assert result == [query]
@@ -168,7 +177,7 @@ class TestOriginalQueryAlwaysPresent:
         rewriter = _make_rewriter()
         query = "what are the retry policies?"
 
-        with patch("requests.post", return_value=_mock_ollama_response("variant A\nvariant B")):
+        with patch("requests.post", return_value=_mock_groq_response("variant A\nvariant B")):
             result = rewriter.rewrite(query, history=[])
 
         assert result[0] == query
@@ -198,7 +207,7 @@ class TestOriginalQueryAlwaysPresent:
 
 class TestHistoryInPrompt:
     def test_last_5_turns_included_in_prompt(self):
-        """Prompt sent to Ollama must contain the last 5 turns of history."""
+        """Prompt sent to Groq must contain the last 5 turns of history."""
         rewriter = _make_rewriter()
         query = "what about the caching layer?"
 
@@ -207,25 +216,28 @@ class TestHistoryInPrompt:
 
         captured_payload = {}
 
-        def capture_post(url, json=None, timeout=None):
+        def capture_post(url, json=None, timeout=None, headers=None):
             captured_payload.update(json or {})
-            return _mock_ollama_response("variant 1")
+            return _mock_groq_response("variant 1")
 
         with patch("requests.post", side_effect=capture_post):
             rewriter.rewrite(query, history)
 
-        prompt: str = captured_payload.get("prompt", "")
+        # Check messages in the payload
+        messages = captured_payload.get("messages", [])
+        # Convert messages to string for easier checking
+        messages_str = str(messages)
 
-        # Turns 3-7 (indices 3..7) should be in the prompt
+        # Turns 3-7 (indices 3..7) should be in the messages
         for i in range(3, 8):
-            assert f"question-{i}" in prompt, (
-                f"Expected turn {i} in prompt, but it was missing"
+            assert f"question-{i}" in messages_str, (
+                f"Expected turn {i} in messages, but it was missing"
             )
 
-        # Turns 0-2 should NOT be in the prompt (older than last 5)
+        # Turns 0-2 should NOT be in the messages (older than last 5)
         for i in range(3):
-            assert f"question-{i}" not in prompt, (
-                f"Turn {i} should not appear in prompt (older than last 5)"
+            assert f"question-{i}" not in messages_str, (
+                f"Turn {i} should not appear in messages (older than last 5)"
             )
 
     def test_empty_history_produces_valid_prompt(self):
@@ -235,15 +247,16 @@ class TestHistoryInPrompt:
 
         captured_payload = {}
 
-        def capture_post(url, json=None, timeout=None):
+        def capture_post(url, json=None, timeout=None, headers=None):
             captured_payload.update(json or {})
-            return _mock_ollama_response("variant 1")
+            return _mock_groq_response("variant 1")
 
         with patch("requests.post", side_effect=capture_post):
             result = rewriter.rewrite(query, history=[])
 
         assert result[0] == query
-        assert "Question:" in captured_payload.get("prompt", "")
+        messages = captured_payload.get("messages", [])
+        assert len(messages) > 0, "Expected at least one message in payload"
 
     def test_exactly_5_turns_all_included(self):
         """When history has exactly 5 turns, all 5 must appear in the prompt."""
@@ -253,13 +266,13 @@ class TestHistoryInPrompt:
 
         captured_payload = {}
 
-        def capture_post(url, json=None, timeout=None):
+        def capture_post(url, json=None, timeout=None, headers=None):
             captured_payload.update(json or {})
-            return _mock_ollama_response("variant 1")
+            return _mock_groq_response("variant 1")
 
         with patch("requests.post", side_effect=capture_post):
             rewriter.rewrite(query, history)
 
-        prompt: str = captured_payload.get("prompt", "")
+        messages_str = str(captured_payload.get("messages", []))
         for i in range(5):
-            assert f"question-{i}" in prompt
+            assert f"question-{i}" in messages_str

@@ -1,4 +1,0 @@
-# file: C:\Users\shubh\Enterprise_Knowledge_Assistant\src\enterprise_rag\vector_store.py
-# hypothesis_version: 6.151.10
-
-[0.0, 0.5, 1.0, '$contains', '$eq', '$or', './chroma_db', '[]', '__no_access__', 'chromadb', 'cosine', 'created_at', 'distances', 'document_title', 'document_url', 'documents', 'down', 'enterprise_rag', 'hnsw:space', 'ids', 'metadatas', 'ok', 'permission_tags', 'source_id', 'source_modified_at', 'source_type', 'token_count']

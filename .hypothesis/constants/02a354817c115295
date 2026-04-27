@@ -1,0 +1,4 @@
+# file: D:\Enterprise_Knowledge_Assistant\src\enterprise_rag\query_rewriter.py
+# hypothesis_version: 6.151.10
+
+[0.7, 5.0, 401, 429, 'Authorization', 'Content-Type', 'application/json', 'choices', 'content', 'llama-3.1-8b-instant', 'message', 'messages', 'model', 'role', 'temperature', 'user']

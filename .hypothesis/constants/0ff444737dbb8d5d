@@ -1,4 +1,0 @@
-# file: C:\Users\shubh\Enterprise_Knowledge_Assistant\src\enterprise_rag\ingestion\github_connector.py
-# hypothesis_version: 6.151.10
-
-['%Y-%m-%dT%H:%M:%SZ', '/', 'Accept', 'Authorization', 'base64', 'blob', 'blob_url', 'commit', 'committer', 'content', 'date', 'encoding', 'filename', 'files', 'github', 'modified_at', 'path', 'replace', 'sha', 'tree', 'type', 'url', 'utf-8']
